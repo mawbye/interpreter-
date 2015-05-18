@@ -1,0 +1,2 @@
+(if #t hello goodbye)
+(let ((x 5) (y 3)) (if #t x y))
