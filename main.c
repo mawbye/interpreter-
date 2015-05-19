@@ -14,7 +14,6 @@ int main() {
     printTree(tree);
     printf("\n\n");
     
-    tree = reverse(tree);
     interpret(tree);
 
     tfree();
