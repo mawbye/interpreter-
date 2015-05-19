@@ -1,0 +1,7 @@
+(let ((x "hello") (y "goodbye")) (if #t x y))
+
+(let ((x #f)) (if x 3 5))
+
+(let ((x 5)) x)
+
+(let ((x 5) (y 3)) (let ((x 8)) (if #f x y)))
