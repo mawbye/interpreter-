@@ -14,21 +14,24 @@
 /* Justin Lim and Elliot Mawby. CS 251, Dave Musicant. Let/If Assignment.
  * Due May 18, 2015.
  *
+ * Modified May 20, 2015.
+ *
  */
-
-int depth;
 
 // Finds the assigned value for a symbol in a specified let frame.
 Value *lookUpSymbol(Value *expr, Frame *frame) {
     Frame *current_frame = frame;
+    // While we aren't looking at the top frame:
     while ((*current_frame).parent != NULL) {
         Value *list = (*current_frame).bindings;
+        // Go through the list of variables for that frame:
         while ((*list).type != NULL_TYPE) {
             if (!strcmp((*expr).s,(*car(car(list))).s)) {
                 return cdr(car(list));
             }
             list = cdr(list);
         }
+        // Move to the previous frame:
         current_frame = (*current_frame).parent;
     }
     if ((*current_frame).parent == NULL) {
@@ -38,9 +41,10 @@ Value *lookUpSymbol(Value *expr, Frame *frame) {
     return 0;
 }
 
-// Helper function: returns true if command
+// Helper function: returns true if the given command
 // is available in our list of implemented racket commands and
 // throws an error otherwise.
+// (Only takes CONS_TYPE whose car is a possible command symbol).
 bool commandCheck(Value *expr) {
     bool return_bool = 0;
     if ((*expr).type == CONS_TYPE) {
@@ -68,9 +72,10 @@ bool commandCheck(Value *expr) {
     return return_bool;
 }
 
-// Evaluates if statements (can't evaluate expressions as conditions).
+// Evaluates if statements.
 Value *evalIf(Value *args, Frame *frame) {
     Value *list = (*frame).bindings;
+    Value *return_value = makeNull();
     
     // Checks for correct number of arguments in if statment.
     if ((*args).type != CONS_TYPE) {
@@ -93,27 +98,24 @@ Value *evalIf(Value *args, Frame *frame) {
     
     Value *condition = car(args);
     
-    // Deals with boolean arguments.
+    // Deals with boolean conditions.
     if ((*condition).type == BOOL_TYPE) {
         if ((*condition).i == 1) {
-            depth--;
-            return eval(car(cdr(args)),frame);
+            return_value = car(cdr(args));
         }
         else {
-            depth--;
-            return eval(car(cdr(cdr(args))),frame);
+            return_value = car(cdr(cdr(args)));
         }
     }
-    // Deals with variables that are assigned boolean variables.
+    // Deals with variablec conditions that are assigned boolean variables.
     else if ((*condition).type == SYMBOL_TYPE) {
         Value *symbol = lookUpSymbol(condition,frame);
         if ((*symbol).type == BOOL_TYPE) {
             if ((*condition).i == 1) {
-            return eval(car(cdr(args)),frame);
+                return_value = car(cdr(args));
             }
             else {
-                depth--;
-                return eval(car(cdr(cdr(args))),frame);
+                return_value = car(cdr(cdr(args)));
             }
         }
         else {
@@ -124,14 +126,36 @@ Value *evalIf(Value *args, Frame *frame) {
     // Deals with S-expressions as conditions.
     else if ((*condition).type == CONS_TYPE) {
         if (commandCheck(condition)) {
-            eval(condition,frame);
+            Value *return_bool = eval(condition,frame);
+            // Deals with arguments that are symbols.
+            if ((*return_bool).type == SYMBOL_TYPE) {
+                return_bool = eval(return_bool,frame);
+            }
+            if ((*return_bool).type == BOOL_TYPE) {
+                if ((*return_bool).i == 1) {
+                    return_value = car(cdr(args));
+                }
+                else {
+                    return_value = car(cdr(cdr(args)));
+                }
+            }
         }
     }
     else {
         printf("Evaluation Error: condition doesn't evaluate to boolean.\n");
         texit(0);
     }
-    return 0;
+    
+    // Determines whether to print symbol or not.
+    if ((*return_value).type == SYMBOL_TYPE) {
+        return eval(return_value,frame);
+    }
+    else if ((*return_value).type == CONS_TYPE) {
+        if (commandCheck(return_value)) {
+            return_value = eval(return_value,frame);
+        }
+    }
+    return return_value;
 }
 
 Value *evalLet(Value *args, Frame *frame) {
@@ -215,7 +239,6 @@ Value *evalLet(Value *args, Frame *frame) {
     
     // Evaluate body in proper frame.
     Value *return_value = eval(body, new_frame);
-    depth--;
     return return_value;
 }
 
@@ -231,7 +254,6 @@ void recurseInterpret(Value *tree) {
 }
 
 void interpret(Value *tree) {
-    depth = -1;
     if ((*car(tree)).type == CONS_TYPE) {
         commandCheck(car(tree));
     }
@@ -240,27 +262,19 @@ void interpret(Value *tree) {
 }
 
 Value *eval(Value *expr, Frame *frame) {
-    depth++;
+    Value *result = expr;
     switch (expr->type) {
     case INT_TYPE:
-        if (depth == 0) {
-            printf("%i\n", (*expr).i);
-        }
+        printf("%i\n", (*expr).i);
         break;
     case DOUBLE_TYPE:
-        if (depth == 0) {
-            printf("%f\n", (*expr).d);
-        }
+        printf("%f\n", (*expr).d);
         break;
     case STR_TYPE:
-        if (depth == 0) {
-            printf("%s\n", (*expr).s);
-        }
+        printf("%s\n", (*expr).s);
         break;
     case BOOL_TYPE:
-        if (depth == 0) {
-            printf("%i\n", (*expr).i);
-        }
+        printf("%i\n", (*expr).i);
         break;
     case SYMBOL_TYPE:
         return lookUpSymbol(expr, frame);
@@ -268,13 +282,15 @@ Value *eval(Value *expr, Frame *frame) {
     case CONS_TYPE:
         if ((*car(expr)).type == SYMBOL_TYPE) {
             if (!strcmp((*car(expr)).s,"if")) {
-                Value *result = evalIf(cdr(expr),frame);
-                display(result);
-            }
-            else if (!strcmp((*car(expr)).s,"let")) {
-                Value *result = evalLet(cdr(expr),frame);
+                result = evalIf(cdr(expr),frame);
                 if ((*result).type != CONS_TYPE) {
                     display(result);
+                }
+            }
+            else if (!strcmp((*car(expr)).s,"let")) {
+                result = evalLet(cdr(expr),frame);
+                if ((*result).type != CONS_TYPE && (*frame).parent == NULL) {
+                    // display(result);
                 }
             }
             // Other commands
@@ -284,9 +300,7 @@ Value *eval(Value *expr, Frame *frame) {
             }
         }
         else {
-            depth--;
             eval(car(expr),frame);
-            depth--;
             eval(cdr(expr),frame);
         }
         
@@ -301,5 +315,5 @@ Value *eval(Value *expr, Frame *frame) {
     case CLOSE_TYPE:
     break;
     }
-    return expr;
+    return result;
 }

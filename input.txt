@@ -1,2 +1,6 @@
-(let ((x 5)) ;; Hello
-(if #t x 3))
+(let ((y 3))
+    (if #f
+        (let ((x 5)) x)
+         y))
+         
+(if (let ((x #t)) x) 3 5)
