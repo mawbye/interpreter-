@@ -16,6 +16,8 @@
  *
  */
 
+int depth;
+
 // Finds the assigned value for a symbol in a specified let frame.
 Value *lookUpSymbol(Value *expr, Frame *frame) {
     Frame *current_frame = frame;
@@ -34,6 +36,36 @@ Value *lookUpSymbol(Value *expr, Frame *frame) {
         texit(0);
     }
     return 0;
+}
+
+// Helper function: returns true if command
+// is available in our list of implemented racket commands and
+// throws an error otherwise.
+bool commandCheck(Value *expr) {
+    bool return_bool = 0;
+    if ((*expr).type == CONS_TYPE) {
+        if ((*car(expr)).type == SYMBOL_TYPE) {
+            if (!strcmp((*car(expr)).s,"if")) {
+                return_bool = 1;
+            }
+            else if (!strcmp((*car(expr)).s,"let")) {
+                return_bool = 1;
+            }
+            else {
+                printf("Evaluation Error: command not found.\n");
+                texit(0);
+            }
+        }
+        else {
+            printf("Evaluation Error: command not found.\n");
+            texit(0);
+        }
+    }   
+    else {
+        printf("Programmer Error: improper use of commandCheck().\n");
+        texit(0);
+    }
+    return return_bool;
 }
 
 // Evaluates if statements (can't evaluate expressions as conditions).
@@ -61,14 +93,18 @@ Value *evalIf(Value *args, Frame *frame) {
     
     Value *condition = car(args);
     
+    // Deals with boolean arguments.
     if ((*condition).type == BOOL_TYPE) {
         if ((*condition).i == 1) {
+            depth--;
             return eval(car(cdr(args)),frame);
         }
         else {
+            depth--;
             return eval(car(cdr(cdr(args))),frame);
         }
     }
+    // Deals with variables that are assigned boolean variables.
     else if ((*condition).type == SYMBOL_TYPE) {
         Value *symbol = lookUpSymbol(condition,frame);
         if ((*symbol).type == BOOL_TYPE) {
@@ -76,6 +112,7 @@ Value *evalIf(Value *args, Frame *frame) {
             return eval(car(cdr(args)),frame);
             }
             else {
+                depth--;
                 return eval(car(cdr(cdr(args))),frame);
             }
         }
@@ -84,20 +121,10 @@ Value *evalIf(Value *args, Frame *frame) {
             texit(0);
         }
     }
-    // Eventually will be able to take S-expressions as conditions.
+    // Deals with S-expressions as conditions.
     else if ((*condition).type == CONS_TYPE) {
-        Value *result = eval(car(condition),frame);
-        if ((*result).type == BOOL_TYPE) {
-            if ((*condition).i == 1) {
-                return eval(car(cdr(args)),frame);
-            }
-            else {
-                return eval(car(cdr(cdr(args))),frame);
-            }
-        }
-        else {
-            printf("Evaluation Error: condition doesn't evaluate to boolean.\n");
-            texit(0);
+        if (commandCheck(condition)) {
+            eval(condition,frame);
         }
     }
     else {
@@ -182,24 +209,14 @@ Value *evalLet(Value *args, Frame *frame) {
     Value *body = car(cdr(args));
     
     // Error checks contents of body.
-    // *****Eventually should test to make sure body is a command.*****
     if ((*body).type == CONS_TYPE) {
-        if ((*car(body)).type == INT_TYPE || (*car(body)).type == DOUBLE_TYPE ||
-                                             (*car(body)).type == STR_TYPE) {
-            printf("Evaluation Error: unable to evaluate body.\n");
-            texit(0);
-        }
+        commandCheck(body);
     }
     
     // Evaluate body in proper frame.
     Value *return_value = eval(body, new_frame);
+    depth--;
     return return_value;
-}
-
-Value *evaluationError() {
-    Value *return_val = talloc(sizeof(Value));
-    (*return_val).type = NULL_TYPE;
-    return return_val;
 }
 
 void recurseInterpret(Value *tree) {
@@ -214,47 +231,63 @@ void recurseInterpret(Value *tree) {
 }
 
 void interpret(Value *tree) {
-   tree = reverse(tree);
-   recurseInterpret(tree);
+    depth = -1;
+    if ((*car(tree)).type == CONS_TYPE) {
+        commandCheck(car(tree));
+    }
+    tree = reverse(tree);
+    recurseInterpret(tree);
 }
 
 Value *eval(Value *expr, Frame *frame) {
-    switch (expr->type)  {
+    depth++;
+    switch (expr->type) {
     case INT_TYPE:
-        // printf("%i\n", (*expr).i);
+        if (depth == 0) {
+            printf("%i\n", (*expr).i);
+        }
         break;
     case DOUBLE_TYPE:
-        // printf("%f\n", (*expr).d);
+        if (depth == 0) {
+            printf("%f\n", (*expr).d);
+        }
         break;
     case STR_TYPE:
-        // printf("%s\n", (*expr).s);
+        if (depth == 0) {
+            printf("%s\n", (*expr).s);
+        }
         break;
     case BOOL_TYPE:
-        // printf("%i\n", (*expr).i);
+        if (depth == 0) {
+            printf("%i\n", (*expr).i);
+        }
         break;
     case SYMBOL_TYPE:
         return lookUpSymbol(expr, frame);
         break;
-    case CONS_TYPE:  
-        
-        // Sanity and error checking on first...
-        
-        if (!strcmp((*car(expr)).s,"if")) {
-            Value *result = evalIf(cdr(expr),frame);
-            display(result);
-        }
-        else if (!strcmp((*car(expr)).s,"let")) {
-            Value *result = evalLet(cdr(expr),frame);
-            if ((*result).type != CONS_TYPE) {
+    case CONS_TYPE:
+        if ((*car(expr)).type == SYMBOL_TYPE) {
+            if (!strcmp((*car(expr)).s,"if")) {
+                Value *result = evalIf(cdr(expr),frame);
                 display(result);
+            }
+            else if (!strcmp((*car(expr)).s,"let")) {
+                Value *result = evalLet(cdr(expr),frame);
+                if ((*result).type != CONS_TYPE) {
+                    display(result);
+                }
+            }
+            // Other commands
+            else {
+                printf("Evaluation Error: command not found.\n");
+                texit(0);
             }
         }
         else {
-            // not a recognized special form
-            evaluationError();
-            
-            recurseInterpret(car(expr));
-            recurseInterpret(cdr(expr));
+            depth--;
+            eval(car(expr),frame);
+            depth--;
+            eval(cdr(expr),frame);
         }
         
         break;
