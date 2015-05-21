@@ -18,6 +18,10 @@
  *
  */
 
+// Global variables
+int paren;
+int quote_bool;
+
 // Finds the assigned value for a symbol in a specified let frame.
 Value *lookUpSymbol(Value *expr, Frame *frame) {
     Frame *current_frame = frame;
@@ -55,6 +59,9 @@ bool commandCheck(Value *expr) {
             else if (!strcmp((*car(expr)).s,"let")) {
                 return_bool = 1;
             }
+            else if (!strcmp((*car(expr)).s,"quote")) {
+                return_bool = 1;
+            }
             else {
                 printf("Evaluation Error: command not found.\n");
                 texit(0);
@@ -74,6 +81,7 @@ bool commandCheck(Value *expr) {
 
 // Evaluates if statements.
 Value *evalIf(Value *args, Frame *frame) {
+    paren++;
     Value *list = (*frame).bindings;
     Value *return_value = makeNull();
     
@@ -111,7 +119,7 @@ Value *evalIf(Value *args, Frame *frame) {
     else if ((*condition).type == SYMBOL_TYPE) {
         Value *symbol = lookUpSymbol(condition,frame);
         if ((*symbol).type == BOOL_TYPE) {
-            if ((*condition).i == 1) {
+            if ((*symbol).i == 1) {
                 return_value = car(cdr(args));
             }
             else {
@@ -148,17 +156,19 @@ Value *evalIf(Value *args, Frame *frame) {
     
     // Determines whether to print symbol or not.
     if ((*return_value).type == SYMBOL_TYPE) {
-        return eval(return_value,frame);
+        return_value = eval(return_value,frame);
     }
     else if ((*return_value).type == CONS_TYPE) {
         if (commandCheck(return_value)) {
             return_value = eval(return_value,frame);
         }
     }
+    paren--;
     return return_value;
 }
 
 Value *evalLet(Value *args, Frame *frame) {
+    paren++;
     // Create a new pointer, e.
     Value *e = talloc(sizeof(Value));
     (*e).type = PTR_TYPE;
@@ -203,6 +213,13 @@ Value *evalLet(Value *args, Frame *frame) {
             texit(0);
         }
         
+        // Evaluates commands in variable assignment.
+        if ((*bind_val).type == CONS_TYPE) {
+            if (commandCheck(bind_val)) {
+                bind_val = eval(bind_val,frame);
+            }
+        }
+        
         // Create cons cells for binding list.
         Value *pair = talloc(sizeof(Value));
         (*pair).type = CONS_TYPE;
@@ -239,11 +256,22 @@ Value *evalLet(Value *args, Frame *frame) {
     
     // Evaluate body in proper frame.
     Value *return_value = eval(body, new_frame);
+    paren--;
     return return_value;
 }
 
-void recurseInterpret(Value *tree) {
-    Value *val = tree;
+Value *evalQuote(Value *args, Frame *frame) {
+    return reverse(args);
+}
+
+void interpret(Value *tree) {
+    Value *val = reverse(tree);
+    paren = 0;
+    quote_bool = 0;
+    if ((*car(val)).type == CONS_TYPE) {
+        commandCheck(car(val));
+    }
+    
     Frame *current_frame = talloc(sizeof(Frame));
     (*current_frame).parent = NULL;
     
@@ -251,14 +279,6 @@ void recurseInterpret(Value *tree) {
     (*current_frame).bindings = current_binding;
     
     Value *return_val = eval(val, current_frame);
-}
-
-void interpret(Value *tree) {
-    if ((*car(tree)).type == CONS_TYPE) {
-        commandCheck(car(tree));
-    }
-    tree = reverse(tree);
-    recurseInterpret(tree);
 }
 
 Value *eval(Value *expr, Frame *frame) {
@@ -283,15 +303,20 @@ Value *eval(Value *expr, Frame *frame) {
         if ((*car(expr)).type == SYMBOL_TYPE) {
             if (!strcmp((*car(expr)).s,"if")) {
                 result = evalIf(cdr(expr),frame);
-                if ((*result).type != CONS_TYPE) {
+                if ((*result).type != CONS_TYPE && paren == 0) {
                     display(result);
                 }
             }
             else if (!strcmp((*car(expr)).s,"let")) {
                 result = evalLet(cdr(expr),frame);
-                if ((*result).type != CONS_TYPE && (*frame).parent == NULL) {
-                    // display(result);
+                if ((*result).type != CONS_TYPE && paren == 0) {
+                    display(result);
                 }
+            }
+            else if (!strcmp((*car(expr)).s,"quote")) {
+                result = evalQuote(cdr(expr),frame);
+                printTree(result);
+                printf("\n");
             }
             // Other commands
             else {

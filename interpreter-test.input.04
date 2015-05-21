@@ -1,3 +1,9 @@
-(let ((a this) (b test) (c should) (d fail)) (if #t 3 5))
+(let ((a this) (b test) (c should) (d work)) (if #t (quote (I worked!)) 5))
 
-b
+5
+
+3
+
+(quote (YAY!))
+
+(let ((x (quote (Another Nested Quote)))) x)

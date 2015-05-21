@@ -1,4 +1,1 @@
-(let ((foo "hello")
-      (bar 7)
-      (baz #f))
-     (if baz foo bar))
+(let ((x #t) (y (quote (a b c d)))) (if x y 3))

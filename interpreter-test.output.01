@@ -1,4 +1,5 @@
-"hello"
-5
-5
-3
+(Example from Dave)
+a
+(a b c)
+(a b (quote (c d e)))
+(foo 5 "hi")
