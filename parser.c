@@ -103,6 +103,10 @@ void recursePrint(Value *tree) {
     case SYMBOL_TYPE:
     printf("%s", (*val).s);
     break;
+    case VOID_TYPE:
+    break;
+    case CLOSURE_TYPE:
+    break;
     }
 }
 

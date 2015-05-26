@@ -1,7 +1,3 @@
-(quote a)
-(quote (a b c))
-(quote (a b (quote (c d e))))
-(let ((foo "hello")
-      (bar (quote (foo 5 "hi")))
-      (baz #f))
-  (if baz foo bar))
+(define x (lambda (a b) (if #t 3 5)))
+
+(x (1 2))

@@ -354,27 +354,6 @@ Value *tokenize() {
             }
         }
         
-        // Deals with whitespace. We realized we shouldn't tokenize tabs or new lines.
-        /* else if (charRead == '\t') {
-            Value *token = talloc(sizeof(Value));
-            char *String = talloc(sizeof(char)*2);
-            String[0] = charRead;
-            String[1] = '\0';
-            (*token).type = SYMBOL_TYPE;
-            (*token).s = String;
-            list = cons(token, list);
-            charRead = fgetc(stdin);
-        }
-        else if (charRead == '\n') {
-            Value *token = talloc(sizeof(Value));
-            char *String = talloc(sizeof(char)*2);
-            String[0] = charRead;
-            String[1] = '\0';
-            (*token).type = SYMBOL_TYPE;
-            (*token).s = String;
-            list = cons(token, list);
-            charRead = fgetc(stdin);
-        } */
         else if (charRead == ' ') {
             charRead = fgetc(stdin);
         }
@@ -438,6 +417,10 @@ void displayTokens(Value *list) {
         break;
         case SYMBOL_TYPE:
         printf("%s:symbol\n", (*val).s);
+        break;
+        case VOID_TYPE:
+        break;
+        case CLOSURE_TYPE:
         break;
         }
     }  

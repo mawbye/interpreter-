@@ -73,6 +73,10 @@ void display(Value *list) {
         case SYMBOL_TYPE:
         printf("%s\n", (*val).s);
         break;
+        case VOID_TYPE:
+        break;
+        case CLOSURE_TYPE:
+        break;
         }
     }  
 }

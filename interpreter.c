@@ -26,12 +26,12 @@ int quote_bool;
 Value *lookUpSymbol(Value *expr, Frame *frame) {
     Frame *current_frame = frame;
     // While we aren't looking at the top frame:
-    while ((*current_frame).parent != NULL) {
+    while (current_frame != NULL) {
         Value *list = (*current_frame).bindings;
         // Go through the list of variables for that frame:
         while ((*list).type != NULL_TYPE) {
             if (!strcmp((*expr).s,(*car(car(list))).s)) {
-                return cdr(car(list));
+               return cdr(car(list));
             }
             list = cdr(list);
         }
@@ -60,6 +60,12 @@ bool commandCheck(Value *expr) {
                 return_bool = 1;
             }
             else if (!strcmp((*car(expr)).s,"quote")) {
+                return_bool = 1;
+            }
+            else if (!strcmp((*car(expr)).s,"define")) {
+                return_bool = 1;
+            }
+            else if (!strcmp((*car(expr)).s,"lambda")) {
                 return_bool = 1;
             }
             else {
@@ -167,6 +173,7 @@ Value *evalIf(Value *args, Frame *frame) {
     return return_value;
 }
 
+// Evaluates Let commands.
 Value *evalLet(Value *args, Frame *frame) {
     paren++;
     // Create a new pointer, e.
@@ -260,9 +267,85 @@ Value *evalLet(Value *args, Frame *frame) {
     return return_value;
 }
 
+// Evaluates Quote commands.
 Value *evalQuote(Value *args, Frame *frame) {
     return reverse(args);
 }
+
+// Evaluates Define commands.
+Value *evalDefine(Value *args, Frame *frame) {
+    paren++;
+    // Error checks for define.
+    if ((*car(args)).type != SYMBOL_TYPE) {
+        printf("Evaluation Error: incorrect define syntax.\n");
+        texit(0);
+    }
+    // Checks if body of define exists.
+    if ((*cdr(args)).type != CONS_TYPE) {
+        printf("Evaluation Error: incorrect define syntax.\n");
+        texit(0);
+    }
+    // CHecks if body of define exists.
+    if ((*car(cdr(args))).type == NULL_TYPE) {
+        printf("Evaluation Error: incorrect define syntax.\n");
+        texit(0);
+    }
+    Frame *top_frame = frame;
+    Value *return_value = talloc(sizeof(Value));
+    (*return_value).type = VOID_TYPE;
+    
+    // Create cons cells for binding list.
+    Value *pair = talloc(sizeof(Value));
+    (*pair).type = CONS_TYPE;
+    // Add variable and associated value to pair.
+    (*pair).c.car = car(args);
+    (*pair).c.cdr = eval(car(cdr(args)),frame);
+    
+    // Add pair to binding list.
+    (*top_frame).bindings = cons(pair, (*top_frame).bindings);
+    
+    paren--;
+    return return_value;
+}
+
+Value *evalLambda(Value *args, Frame *frame) {
+    if ((*args).type != CONS_TYPE) {
+        printf("Evaluation Error: incorrect lambda syntax.\n");
+        texit(0);
+    } 
+    if ((*cdr(args)).type != CONS_TYPE) {
+        printf("Evaluation Error: incorrect lambda syntax.\n");
+        texit(0);
+    }
+    if ((*car(cdr(args))).type == NULL_TYPE) {
+        printf("Evaluation Error: incorrect lambda syntax.\n");
+        texit(0);
+    }
+    if ((*car(cdr(args))).type == CONS_TYPE) {
+        if ((*car(car(cdr(args)))).type == NULL_TYPE) {
+            printf("Evaluation Error: incorrect lambda syntax.\n");
+            texit(0);
+        }
+    }
+    
+    paren++;
+    Value *temp = talloc(sizeof(Value));
+    (*temp).type = CLOSURE_TYPE;
+    (*temp).cl.paramNames = car(args);
+    (*temp).cl.functionCode = cdr(args);
+    (*temp).cl.frame = frame;
+    
+    paren--;
+    return temp;
+}
+
+Value *apply(Value *function, Value *args) {
+    display((*function).cl.paramNames);
+    printf("-----\n");
+    display(args);
+    return 0;
+}
+    
 
 void interpret(Value *tree) {
     Value *val = reverse(tree);
@@ -282,6 +365,7 @@ void interpret(Value *tree) {
 }
 
 Value *eval(Value *expr, Frame *frame) {
+    
     Value *result = expr;
     switch (expr->type) {
     case INT_TYPE:
@@ -297,7 +381,7 @@ Value *eval(Value *expr, Frame *frame) {
         printf("%i\n", (*expr).i);
         break;
     case SYMBOL_TYPE:
-        return lookUpSymbol(expr, frame);
+        result = lookUpSymbol(expr, frame);
         break;
     case CONS_TYPE:
         if ((*car(expr)).type == SYMBOL_TYPE) {
@@ -318,18 +402,35 @@ Value *eval(Value *expr, Frame *frame) {
                 printTree(result);
                 printf("\n");
             }
+            else if (!strcmp((*car(expr)).s,"define")) {
+                result = evalDefine(cdr(expr),frame);
+            }
+            else if (!strcmp((*car(expr)).s,"lambda")) {
+                
+                result = evalLambda(cdr(expr),frame);
+            }
             // Other commands
             else {
-                printf("Evaluation Error: command not found.\n");
-                texit(0);
+                
+                Value *function = lookUpSymbol(car(expr),frame);
+                if ((*function).type == CLOSURE_TYPE) {
+                    printf("I WORK\n");
+                    return apply(function, cdr(expr));
+                
+                }
+                else {
+                    printf("Evaluation Error: command not found.\n");
+                    texit(0);
+                }
             }
         }
         else {
+         
             eval(car(expr),frame);
             eval(cdr(expr),frame);
         }
         
-        break;
+    break;
 
     case NULL_TYPE: 
     break;
@@ -339,6 +440,11 @@ Value *eval(Value *expr, Frame *frame) {
     break;
     case CLOSE_TYPE:
     break;
+    case VOID_TYPE:
+    break;
+    case CLOSURE_TYPE:
+    break;
     }
+    
     return result;
 }
