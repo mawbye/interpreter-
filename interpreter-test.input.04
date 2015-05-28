@@ -1,9 +1,16 @@
-(let ((a this) (b test) (c should) (d work)) (if #t (quote (I worked!)) 5))
+(define returnsTrue
+    (lambda ()
+        (#t)))
 
-5
+(define letTest
+    (lambda ()
+        (let ((p "Purple"))
+            p)))
+            
+(define returnsPurpleOrOrange
+    (lambda (x)
+        (if x (letTest) "Orange")))
+        
+(returnsPurpleOrOrange (returnsTrue))
 
-3
-
-(quote (YAY!))
-
-(let ((x (quote (Another Nested Quote)))) x)
+"TEST CASE NUMBER 4."

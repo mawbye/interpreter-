@@ -1,1 +1,16 @@
-(let ((x (quote (Nested quote)))) (if #t x 12))
+(define three
+  (lambda ()
+    (3)))
+
+(define five
+  (lambda ()
+    (5)))
+    
+(define threeOrFive
+  (lambda (x)
+    (if x (three) (five))))
+    
+(threeOrFive #t)
+(threeOrFive #f)
+
+"TEST CASE NUMBER 2."

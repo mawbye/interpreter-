@@ -15,12 +15,18 @@
  * Due May 18, 2015.
  *
  * Modified May 20, 2015.
+ * and May 26, 2015.
  *
  */
 
-// Global variables
+// Global variables.
+// Paren keeps track of the number of parens.
+// Quote_bool keeps track of printing quotes.
+// Command_bool keeps track of variables vs. user made commands.
 int paren;
 int quote_bool;
+int command_bool = 0;
+
 
 // Finds the assigned value for a symbol in a specified let frame.
 Value *lookUpSymbol(Value *expr, Frame *frame) {
@@ -31,14 +37,14 @@ Value *lookUpSymbol(Value *expr, Frame *frame) {
         // Go through the list of variables for that frame:
         while ((*list).type != NULL_TYPE) {
             if (!strcmp((*expr).s,(*car(car(list))).s)) {
-               return cdr(car(list));
+                return cdr(car(list));
             }
             list = cdr(list);
         }
         // Move to the previous frame:
         current_frame = (*current_frame).parent;
     }
-    if ((*current_frame).parent == NULL) {
+    if (current_frame == NULL) {
         printf("Evaluation Error: unassigned variable.\n");
         texit(0);
     }
@@ -47,10 +53,11 @@ Value *lookUpSymbol(Value *expr, Frame *frame) {
 
 // Helper function: returns true if the given command
 // is available in our list of implemented racket commands and
-// throws an error otherwise.
+// false otherwise.
 // (Only takes CONS_TYPE whose car is a possible command symbol).
-bool commandCheck(Value *expr) {
+bool commandCheck(Value *expr, Frame *frame) {
     bool return_bool = 0;
+    Frame *current_frame = frame;
     if ((*expr).type == CONS_TYPE) {
         if ((*car(expr)).type == SYMBOL_TYPE) {
             if (!strcmp((*car(expr)).s,"if")) {
@@ -69,13 +76,18 @@ bool commandCheck(Value *expr) {
                 return_bool = 1;
             }
             else {
-                printf("Evaluation Error: command not found.\n");
-                texit(0);
+                // Checks user made commands.
+                while (current_frame != NULL) {
+                    Value *commands = (*current_frame).bindings;
+                    while ((*commands).type != NULL_TYPE) {
+                        if (!strcmp((*car(expr)).s,(*car(car(commands))).s)) {
+                            return_bool = 1;
+                        }
+                        commands = cdr(commands);
+                    }
+                    current_frame = (*current_frame).parent;
+                }
             }
-        }
-        else {
-            printf("Evaluation Error: command not found.\n");
-            texit(0);
         }
     }   
     else {
@@ -85,10 +97,26 @@ bool commandCheck(Value *expr) {
     return return_bool;
 }
 
+// Helper Function: binds a variable and value together.
+// Returns Value pointing to linked list.
+Value *bind(Value *bind_var, Value *bind_val, Value *return_list) {
+    // Create cons cells for binding list.
+    Value *pair = talloc(sizeof(Value));
+    (*pair).type = CONS_TYPE;
+    // Add variable and associated value to pair.
+    (*pair).c.car = bind_var;
+    (*pair).c.cdr = bind_val;
+    // Add pair to return list.
+    return_list = cons(pair, return_list);
+    return return_list;
+}
+    
+
+
 // Evaluates if statements.
 Value *evalIf(Value *args, Frame *frame) {
     paren++;
-    Value *list = (*frame).bindings;
+    Frame *current_frame = frame;
     Value *return_value = makeNull();
     
     // Checks for correct number of arguments in if statment.
@@ -111,8 +139,20 @@ Value *evalIf(Value *args, Frame *frame) {
     }
     
     Value *condition = car(args);
+    // Evaluates conditions that are not booleans.
+    while ((*condition).type != BOOL_TYPE) {
+        if ((*condition).type == NULL_TYPE || (*condition).type == INT_TYPE
+                                           || (*condition).type == DOUBLE_TYPE
+                                           || (*condition).type == STR_TYPE) {
+            printf("Evaluation Error: condition doesn't evaluate to boolean.\n");
+            texit(0);
+        }
+        else if ((*condition).type == SYMBOL_TYPE || (*condition).type == CONS_TYPE) {
+            condition = eval(condition,current_frame);
+        }
+    }
     
-    // Deals with boolean conditions.
+    // Evaluates conditions that are booleans.      
     if ((*condition).type == BOOL_TYPE) {
         if ((*condition).i == 1) {
             return_value = car(cdr(args));
@@ -121,53 +161,19 @@ Value *evalIf(Value *args, Frame *frame) {
             return_value = car(cdr(cdr(args)));
         }
     }
-    // Deals with variablec conditions that are assigned boolean variables.
-    else if ((*condition).type == SYMBOL_TYPE) {
-        Value *symbol = lookUpSymbol(condition,frame);
-        if ((*symbol).type == BOOL_TYPE) {
-            if ((*symbol).i == 1) {
-                return_value = car(cdr(args));
-            }
-            else {
-                return_value = car(cdr(cdr(args)));
-            }
-        }
-        else {
-            printf("Evaluation Error: condition doesn't evaluate to boolean.\n");
-            texit(0);
-        }
-    }
-    // Deals with S-expressions as conditions.
-    else if ((*condition).type == CONS_TYPE) {
-        if (commandCheck(condition)) {
-            Value *return_bool = eval(condition,frame);
-            // Deals with arguments that are symbols.
-            if ((*return_bool).type == SYMBOL_TYPE) {
-                return_bool = eval(return_bool,frame);
-            }
-            if ((*return_bool).type == BOOL_TYPE) {
-                if ((*return_bool).i == 1) {
-                    return_value = car(cdr(args));
-                }
-                else {
-                    return_value = car(cdr(cdr(args)));
-                }
-            }
-        }
-    }
-    else {
-        printf("Evaluation Error: condition doesn't evaluate to boolean.\n");
-        texit(0);
-    }
     
     // Determines whether to print symbol or not.
     if ((*return_value).type == SYMBOL_TYPE) {
-        return_value = eval(return_value,frame);
+        return_value = eval(return_value,current_frame);
     }
     else if ((*return_value).type == CONS_TYPE) {
-        if (commandCheck(return_value)) {
-            return_value = eval(return_value,frame);
+        if (commandCheck(return_value, frame)) {
+            return_value = eval(return_value,current_frame);
         }
+        else {
+            printf("Evaluation Error: command not found.\n");
+            texit(0);
+       }
     }
     paren--;
     return return_value;
@@ -222,19 +228,17 @@ Value *evalLet(Value *args, Frame *frame) {
         
         // Evaluates commands in variable assignment.
         if ((*bind_val).type == CONS_TYPE) {
-            if (commandCheck(bind_val)) {
+            if (commandCheck(bind_val,frame)) {
                 bind_val = eval(bind_val,frame);
+            }
+            else {
+                printf("Evaluation Error: command not found.\n");
+                texit(0);
             }
         }
         
-        // Create cons cells for binding list.
-        Value *pair = talloc(sizeof(Value));
-        (*pair).type = CONS_TYPE;
-        // Add variable and associated value to pair.
-        (*pair).c.car = bind_var;
-        (*pair).c.cdr = bind_val;
-        // Add pair to binding list.
-        current_binding = cons(pair, current_binding);
+        // Bind pair.
+        current_binding = bind(bind_var,bind_val,current_binding);
         
         parameters = cdr(parameters);
     }
@@ -258,7 +262,10 @@ Value *evalLet(Value *args, Frame *frame) {
     
     // Error checks contents of body.
     if ((*body).type == CONS_TYPE) {
-        commandCheck(body);
+        if (!commandCheck(body,frame)) {
+            printf("Evaluation Error: command not found.\n");
+            texit(0);
+        }
     }
     
     // Evaluate body in proper frame.
@@ -290,24 +297,21 @@ Value *evalDefine(Value *args, Frame *frame) {
         printf("Evaluation Error: incorrect define syntax.\n");
         texit(0);
     }
+    // Creates top frame and void return Value.
     Frame *top_frame = frame;
     Value *return_value = talloc(sizeof(Value));
     (*return_value).type = VOID_TYPE;
     
-    // Create cons cells for binding list.
-    Value *pair = talloc(sizeof(Value));
-    (*pair).type = CONS_TYPE;
-    // Add variable and associated value to pair.
-    (*pair).c.car = car(args);
-    (*pair).c.cdr = eval(car(cdr(args)),frame);
-    
-    // Add pair to binding list.
-    (*top_frame).bindings = cons(pair, (*top_frame).bindings);
+    // Bind command to top frame.
+    Value *var = car(args);
+    Value *val = eval(car(cdr(args)),frame);
+    (*top_frame).bindings = bind(var,val,(*top_frame).bindings);
     
     paren--;
     return return_value;
 }
 
+// Evaluates Lambda commands.
 Value *evalLambda(Value *args, Frame *frame) {
     if ((*args).type != CONS_TYPE) {
         printf("Evaluation Error: incorrect lambda syntax.\n");
@@ -328,45 +332,96 @@ Value *evalLambda(Value *args, Frame *frame) {
         }
     }
     
+    // Creates closure and adds necessary attributes to closure.
     paren++;
-    Value *temp = talloc(sizeof(Value));
-    (*temp).type = CLOSURE_TYPE;
-    (*temp).cl.paramNames = car(args);
-    (*temp).cl.functionCode = cdr(args);
-    (*temp).cl.frame = frame;
+    Value *closure = talloc(sizeof(Value));
+    (*closure).type = CLOSURE_TYPE;
+    (*closure).cl.paramNames = car(args);
+    // Gets rid of unecessary layer of parens.
+    if ((*cdr(args)).type == CONS_TYPE) {
+        (*closure).cl.functionCode = cdr(args);
+    }
+    else {
+        (*closure).cl.functionCode = cdr(args);
+    }
+    (*closure).cl.frame = frame;
     
     paren--;
-    return temp;
+    return closure;
 }
 
+// Given code and a list of arguments, applies arguments to code and returns result.
 Value *apply(Value *function, Value *args) {
-    display((*function).cl.paramNames);
-    printf("-----\n");
-    display(args);
-    return 0;
-}
+    // Creates new frame.
+    Value *parameters = (*function).cl.paramNames;
+    Frame *new_frame = talloc(sizeof(Frame));
+    (*new_frame).parent = (*function).cl.frame;
+    Value *current_binding = makeNull();
     
+    while ((*parameters).type != NULL_TYPE) {
+        // Error checks for nested assignments in let.
+        if ((*parameters).type != CONS_TYPE) {
+            printf("Evaluation Error: apply requires nested list.\n");
+            texit(0);
+        }
+        if ((*car(parameters)).type == NULL_TYPE) {
+            printf("Evaluation Error: incorrect variable assignment syntax.\n");
+            texit(0);
+        }
+        
+        // Find variable and associated value.
+        Value *bind_var = car(parameters);
+        Value *bind_val;
+        // Deals with weird input.
+        if ((*args).type != CONS_TYPE) {
+            bind_val = args;
+        }
+        else {
+            bind_val = car(args);
+        }
+       
+        // Check to see if commands are correct syntax.
+        if ((*bind_var).type != SYMBOL_TYPE) {
+            printf("Evaluation Error: variable in apply not available for assignment.\n");
+            texit(0);
+        }
+        
+        // Bind command.
+        current_binding = bind(bind_var,bind_val,current_binding);
+        
+        parameters = cdr(parameters);
+        args = cdr(args);
+    }
+     // Reverse to put into correct order.
+    current_binding = reverse(current_binding);
+    // Set binding list to new frame.
+    (*new_frame).bindings = current_binding;
+    
+    // Evaluates given code with arguments added to binding.
+    command_bool = 0;
+    Value *result = eval((*function).cl.functionCode, new_frame);
+    
+    return result;
+}
 
+// Shell function that calls eval() on first object.
 void interpret(Value *tree) {
     Value *val = reverse(tree);
     paren = 0;
     quote_bool = 0;
-    if ((*car(val)).type == CONS_TYPE) {
-        commandCheck(car(val));
-    }
     
     Frame *current_frame = talloc(sizeof(Frame));
-    (*current_frame).parent = NULL;
-    
     Value *current_binding = makeNull();
-    (*current_frame).bindings = current_binding;
+    (*current_frame).bindings = current_binding; 
     
     Value *return_val = eval(val, current_frame);
 }
 
+// Evaluates things.
 Value *eval(Value *expr, Frame *frame) {
-    
     Value *result = expr;
+    // printf("Paren count: %i\n", paren);
+    
     switch (expr->type) {
     case INT_TYPE:
         printf("%i\n", (*expr).i);
@@ -378,7 +433,9 @@ Value *eval(Value *expr, Frame *frame) {
         printf("%s\n", (*expr).s);
         break;
     case BOOL_TYPE:
-        printf("%i\n", (*expr).i);
+        if (paren == 0) {
+            // printf("%i\n", (*expr).i);
+        }
         break;
     case SYMBOL_TYPE:
         result = lookUpSymbol(expr, frame);
@@ -390,6 +447,7 @@ Value *eval(Value *expr, Frame *frame) {
                 if ((*result).type != CONS_TYPE && paren == 0) {
                     display(result);
                 }
+                
             }
             else if (!strcmp((*car(expr)).s,"let")) {
                 result = evalLet(cdr(expr),frame);
@@ -406,32 +464,42 @@ Value *eval(Value *expr, Frame *frame) {
                 result = evalDefine(cdr(expr),frame);
             }
             else if (!strcmp((*car(expr)).s,"lambda")) {
-                
                 result = evalLambda(cdr(expr),frame);
             }
-            // Other commands
+            // Checks whether a symbol is a user made command or a variable.
+            else if ((commandCheck(expr, frame)) && (command_bool == 1)){
+                command_bool = 0;
+                Value *evalOperator = eval(car(expr),frame);
+                command_bool = 0;
+                Value *evalArgs = eval(cdr(expr),frame);
+                
+                // Applies evaluated operator and arguments.
+                result = apply(evalOperator,evalArgs); 
+            }
+            // Don't really know why we need this.
+            else if (commandCheck(expr, frame)){
+                paren++;
+                result = eval(car(expr), frame);
+                paren--;
+            }
+            // Other commands go here.
             else {
-                
-                Value *function = lookUpSymbol(car(expr),frame);
-                if ((*function).type == CLOSURE_TYPE) {
-                    printf("I WORK\n");
-                    return apply(function, cdr(expr));
-                
-                }
-                else {
-                    printf("Evaluation Error: command not found.\n");
-                    texit(0);
-                }
+                printf("Evaluation Error: undefined variable.\n");
+                texit(0);
             }
         }
+        // User made commands.
+        else if ((*car(expr)).type == CONS_TYPE) {
+            command_bool = 1;
+            result = eval(car(expr),frame);
+            eval(cdr(expr), frame);
+        }
+    
         else {
-         
             eval(car(expr),frame);
             eval(cdr(expr),frame);
         }
-        
     break;
-
     case NULL_TYPE: 
     break;
     case PTR_TYPE:
@@ -445,6 +513,5 @@ Value *eval(Value *expr, Frame *frame) {
     case CLOSURE_TYPE:
     break;
     }
-    
     return result;
 }

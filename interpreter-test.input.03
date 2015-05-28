@@ -1,1 +1,15 @@
-(let ((x #t) (y (quote (a b c d)))) (if x y 3))
+(define giveMeAnythingAndIllReturnThree
+  (lambda (x)
+    ("Three")))
+    
+(define returnsTrue
+    (lambda ()
+        (#t)))
+    
+(define threeOrThree
+  (lambda (y)
+    (if y (giveMeAnythingAndIllReturnThree 6) 3)))
+    
+(threeOrThree (returnsTrue))
+
+"TEST CASE NUMBER 3."
