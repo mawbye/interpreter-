@@ -1,10 +1,10 @@
 (define giveMeAnythingAndIllReturnThree
   (lambda (x)
-    ("Three")))
+    "Three"))
     
 (define returnsTrue
     (lambda ()
-        (#t)))
+        #t))
     
 (define threeOrThree
   (lambda (y)

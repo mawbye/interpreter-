@@ -178,7 +178,7 @@ Value *tokenize() {
             // Vals to cons various types.
             int val = 0;
             int bool_val = 0;
-            double float_val;
+            double float_val = 0;
             
             // Creates new char array and int array.
             char *string = talloc(sizeof(char)*capacity);
@@ -262,7 +262,8 @@ Value *tokenize() {
                 counter = counter - 1;
             }
             // If all symbols are ints, then item is an int.
-            if (int_counter == counter && float_counter != 1) {
+            if (int_counter == counter && float_counter < 1) {
+                
                 is_int = 1;
                 int i;
                 double result = 0;
@@ -283,7 +284,7 @@ Value *tokenize() {
                 int i = 0;
                 int j = 0;
                 int decimal = 0;
-                double result;
+                double result = 0;
                 for (j=0; j < counter; j++) {
                     if (int_array[j] == '.') {
                         decimal = j;
