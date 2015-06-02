@@ -1,13 +1,10 @@
-(define not
-  (lambda (bool)
-    (if bool #f #t)))
-    
-(define testit
-  (lambda (cond conseq alt)
-    (let ((nconseq (not conseq)) (nalt (not alt)))
-      (if cond nconseq nalt))))
-    
-(testit #t #f #t)
-(testit #f #f #t)
+(+ 3 (+ 5 6))
+(+ 3.0 (+ 5 6))
 
-"TEST CASE NUMBER 1: DEMO CASE."
+(define add5
+    (lambda (x)
+        (+ x 5)))
+
+(add5 20)
+
+"TEST CASE NUMBER 1: + demos."

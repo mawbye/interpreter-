@@ -1,16 +1,12 @@
-(define returnsTrue
-    (lambda ()
-        (#t)))
+(define length
+  (lambda (L)
+    (if (null? L)
+        0
+        (+ 1 (length (cdr L))))))
 
-(define letTest
-    (lambda ()
-        (let ((p "Purple"))
-            p)))
-            
-(define returnsPurpleOrOrange
-    (lambda (x)
-        (if x (letTest) "Orange")))
-        
-(returnsPurpleOrOrange (returnsTrue))
+(length (quote ()))
+(length (quote (4 5 6)))
+(length (quote (1 2 3 4 5 6 (quote (2)))))
+(length (quote ("cat" "dog" "fish" "pig")))
 
-"TEST CASE NUMBER 4."
+"TEST CASE NUMBER 4: Demo code."

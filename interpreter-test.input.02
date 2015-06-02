@@ -1,16 +1,5 @@
-(define three
-  (lambda ()
-    (3)))
-
-(define five
-  (lambda ()
-    (5)))
-    
-(define threeOrFive
-  (lambda (x)
-    (if x (three) (five))))
-    
-(threeOrFive #t)
-(threeOrFive #f)
+(car (quote (1 2 3)))
+(car (cdr (quote (1 2 3))))
+(car (cdr (cdr (quote (1 2 3)))))
 
 "TEST CASE NUMBER 2."

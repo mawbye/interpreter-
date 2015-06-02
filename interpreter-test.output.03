@@ -1,2 +1,6 @@
-"Three"
+(quote ((1 2) 3))
+2
+(quote ((1) 2))
+1
+(quote (1 2 3))
 "TEST CASE NUMBER 3."

@@ -1,15 +1,5 @@
-(define giveMeAnythingAndIllReturnThree
-  (lambda (x)
-    "Three"))
-    
-(define returnsTrue
-    (lambda ()
-        #t))
-    
-(define threeOrThree
-  (lambda (y)
-    (if y (giveMeAnythingAndIllReturnThree 6) 3)))
-    
-(threeOrThree (returnsTrue))
+(cons (quote (1 2)) (quote (3)))
+(cons (quote (1)) 2)
+(cons 1 (quote (2 3)))
 
 "TEST CASE NUMBER 3."
