@@ -77,6 +77,8 @@ void display(Value *list) {
         break;
         case CLOSURE_TYPE:
         break;
+        case PRIMITIVE_TYPE:
+        break;
         }
     }  
 }

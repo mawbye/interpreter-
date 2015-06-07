@@ -107,6 +107,8 @@ void recursePrint(Value *tree) {
     break;
     case CLOSURE_TYPE:
     break;
+    case PRIMITIVE_TYPE:
+    break;
     }
 }
 

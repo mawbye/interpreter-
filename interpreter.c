@@ -19,16 +19,12 @@
  *
  */
 
-// Global variables.
-// Paren keeps track of the number of parens.
-// Quote_bool keeps track of printing quotes.
-// Command_bool keeps track of variables vs. user made commands.
-int paren;
-int quote_bool;
-int command_bool = 0;
 
+// ***********************************************************
+// ******************** HELPER FUNCTIONS: ********************
+// ***********************************************************
 
-// Finds the assigned value for a symbol in a specified let frame.
+// Finds the assigned value for a symbol.
 Value *lookUpSymbol(Value *expr, Frame *frame) {
     Frame *current_frame = frame;
     // While we aren't looking at the top frame:
@@ -36,13 +32,7 @@ Value *lookUpSymbol(Value *expr, Frame *frame) {
         Value *list = (*current_frame).bindings;
         // Go through the list of variables for that frame:
         while ((*list).type != NULL_TYPE) {
-            //display(list);
             if (!strcmp((*expr).s,(*car(car(list))).s)) {
-              //  printf("found: ");
-              //  printf("%s\n", (*expr).s);
-              //  printf("returning: ");
-              //  display(cdr(car(list)));
-              //  printf("returned\n");
                 return cdr(car(list));
             }
             list = cdr(list);
@@ -57,68 +47,7 @@ Value *lookUpSymbol(Value *expr, Frame *frame) {
     return 0;
 }
 
-// Helper function: returns true if the given command
-// is available in our list of implemented racket commands and
-// false otherwise.
-// (Only takes CONS_TYPE whose car is a possible command symbol).
-bool commandCheck(Value *expr, Frame *frame) {
-    bool return_bool = 0;
-    Frame *current_frame = frame;
-    if ((*expr).type == CONS_TYPE) {
-        if ((*car(expr)).type == SYMBOL_TYPE) {
-            if (!strcmp((*car(expr)).s,"if")) {
-                return_bool = 1;
-            }
-            else if (!strcmp((*car(expr)).s,"let")) {
-                return_bool = 1;
-            }
-            else if (!strcmp((*car(expr)).s,"quote")) {
-                return_bool = 1;
-            }
-            else if (!strcmp((*car(expr)).s,"define")) {
-                return_bool = 1;
-            }
-            else if (!strcmp((*car(expr)).s,"lambda")) {
-                return_bool = 1;
-            }
-            else if (!strcmp((*car(expr)).s,"+")) {
-                return_bool = 1;
-            }
-            else if (!strcmp((*car(expr)).s,"null?")) {
-                return_bool = 1;
-            }
-            else if (!strcmp((*car(expr)).s,"car")) {
-                return_bool = 1;
-            }
-            else if (!strcmp((*car(expr)).s,"cdr")) {
-                return_bool = 1;
-            }
-            else if (!strcmp((*car(expr)).s,"cons")) {
-                return_bool = 1;
-            }
-            else {
-                // Checks user made commands.
-                while (current_frame != NULL) {
-                    Value *commands = (*current_frame).bindings;
-                    while ((*commands).type != NULL_TYPE) {
-                        if (!strcmp((*car(expr)).s,(*car(car(commands))).s)) {
-                            return_bool = 1;
-                        }
-                        commands = cdr(commands);
-                    }
-                    current_frame = (*current_frame).parent;
-                }
-            }
-        }
-    }   
-    else {
-        printf("Programmer Error: improper use of commandCheck().\n");
-        texit(0);
-    }
-    return return_bool;
-}
-
-// Helper Function: binds a variable and value together.
+// Binds a variable and value together.
 // Returns Value pointing to linked list.
 Value *bind(Value *bind_var, Value *bind_val, Value *return_list) {
     // Create cons cells for binding list.
@@ -132,12 +61,42 @@ Value *bind(Value *bind_var, Value *bind_val, Value *return_list) {
     return return_list;
 }
 
+// Binds primitive functions to top frame.
+void primBind(char *name, Value *(*function)(struct Value *), Frame *frame) {
+    // creates a primitive type Value
+    Value *value = talloc(sizeof(Value));
+    (*value).type = PRIMITIVE_TYPE;
+    (*value).pf = function;
+    // Binds value to top frame
+    Value *name_val = talloc(sizeof(Value));
+    (*name_val).type = SYMBOL_TYPE;
+    (*name_val).s = name;
+    (*frame).bindings = bind(name_val,value,(*frame).bindings);
+}
+
+// Helper evaluates a list of arguments.
+Value *evalEach(Value *args, Frame *frame) {
+    Value *result = talloc(sizeof(Value));
+    result = makeNull();
+    while ((*args).type != NULL_TYPE) {
+        if((*args).type == CONS_TYPE) {
+            Value *evaled_args = eval(car(args),frame);
+            result = cons(evaled_args,result);
+        }
+        args = cdr(args);
+    }
+    result = reverse(result);
+    return result;
+}
+
+// ********************************************************
+// ******************** Special Forms: ********************
+// ********************************************************
+
 // ******************** Evaluates if statements. ********************
 Value *evalIf(Value *args, Frame *frame) {
-    paren++;
     Frame *current_frame = frame;
     Value *return_value = makeNull();
-    
     // Checks for correct number of arguments in if statment.
     if ((*args).type != CONS_TYPE) {
         printf("Evaluation Error: if command requires 3 arguments.\n");
@@ -182,9 +141,9 @@ Value *evalIf(Value *args, Frame *frame) {
     }
     
     // Evaluates conditions that are booleans.
-   
     if ((*condition).type == BOOL_TYPE) {
         if ((*condition).i == 1) {
+            
             return_value = car(cdr(args));
         }
         else {
@@ -197,27 +156,18 @@ Value *evalIf(Value *args, Frame *frame) {
         return_value = eval(return_value,current_frame);
     }
     else if ((*return_value).type == CONS_TYPE) {
-        if (commandCheck(return_value, frame)) {
-            return_value = eval(return_value,current_frame);
-        }
-        else {
-            printf("Evaluation Error: command not found.\n");
-            texit(0);
-       }
+        return_value = eval(return_value,current_frame);
     }
-    paren--;
     return return_value;
 }
 
 // ******************** Evaluates Let commands. ********************
 Value *evalLet(Value *args, Frame *frame) {
-    paren++;
     // Create a new pointer, e.
     Value *e = talloc(sizeof(Value));
     (*e).type = PTR_TYPE;
     //Create a new frame.
     Frame *new_frame = talloc(sizeof(Frame));
-    
     // Point e towards the current frame.
     (*e).p = frame;
     (*new_frame).parent = (*e).p;
@@ -258,13 +208,7 @@ Value *evalLet(Value *args, Frame *frame) {
         
         // Evaluates commands in variable assignment.
         if ((*bind_val).type == CONS_TYPE) {
-            if (commandCheck(bind_val,frame)) {
-                bind_val = eval(bind_val,frame);
-            }
-            else {
-                printf("Evaluation Error: command not found.\n");
-                texit(0);
-            }
+            bind_val = eval(bind_val,frame);
         }
         
         // Bind pair.
@@ -290,30 +234,22 @@ Value *evalLet(Value *args, Frame *frame) {
     // Set up body of let frame.
     Value *body = car(cdr(args));
     
-    // Error checks contents of body.
-    if ((*body).type == CONS_TYPE) {
-        if (!commandCheck(body,frame)) {
-            printf("Evaluation Error: command not found.\n");
-            texit(0);
-        }
-    }
-    
     // Evaluate body in proper frame.
     Value *return_value = eval(body, new_frame);
-    paren--;
     return return_value;
 }
 
-// ******************** Evaluates Quote commands. ********************
+// ******************** Evaluates quote commands ********************
 Value *evalQuote(Value *args, Frame *frame) {
-   // printf("returning from quote$$$$$$$$$$$$$$$\n");
-    //display(reverse(args));
-    return car(args);
+    Value *result = args;
+    if ((*car(result)).type != CONS_TYPE && (*car(result)).type != NULL_TYPE) {
+        result = car(args);
+    }
+    return result;
 }
 
 // ******************** Evaluates Define commands. ********************
 Value *evalDefine(Value *args, Frame *frame) {
-    paren++;
     // Error checks for define.
     if ((*car(args)).type != SYMBOL_TYPE) {
         printf("Evaluation Error: incorrect define syntax.\n");
@@ -339,7 +275,6 @@ Value *evalDefine(Value *args, Frame *frame) {
     Value *val = eval(car(cdr(args)),frame);
     (*top_frame).bindings = bind(var,val,(*top_frame).bindings);
     
-    paren--;
     return return_value;
 }
 
@@ -365,7 +300,6 @@ Value *evalLambda(Value *args, Frame *frame) {
     }
     
     // Creates closure and adds necessary attributes to closure.
-    paren++;
     Value *closure = talloc(sizeof(Value));
     (*closure).type = CLOSURE_TYPE;
     (*closure).cl.paramNames = car(args);
@@ -373,13 +307,15 @@ Value *evalLambda(Value *args, Frame *frame) {
 
     (*closure).cl.frame = frame;
     
-    paren--;
     return closure;
 }
 
+// **********************************************************
+// ******************** Primitive Types: ********************
+// **********************************************************
+
 // ******************** Evaluates + commands. ********************
-Value *evalPlus(Value *args, Frame *frame) {
-    paren++;
+Value *evalPlus(Value *args) {
     // Final return value.
     double return_integer = 0;
     // Tracks whether return value should be int or double.
@@ -391,26 +327,23 @@ Value *evalPlus(Value *args, Frame *frame) {
         // Tracks individual argument type.
         bool real_number = 0;
         double new_integer = 0;
-        // Evaluates current argument.
-        Value *operand = eval(car(parameters),frame);
-        
+      
         // Checks current argument's type.
-        if ((*operand).type == DOUBLE_TYPE) {
+        if ((*car(parameters)).type == DOUBLE_TYPE) {
             real_number = 1;
             return_real = 1;
         }
-        
         // Error check for non-number arguments.
-        if ((*operand).type != INT_TYPE && (*operand).type != DOUBLE_TYPE) {
-            printf("Evaluation Error: incorrect argument in command.\n");
+        if ((*car(parameters)).type != INT_TYPE && (*car(parameters)).type != DOUBLE_TYPE) {
+            printf("Evaluation Error: incorrect argument in + command.\n");
             texit(0);
         }
         // Places value into correct type.
         if (real_number) {
-            new_integer = (*operand).d;
+            new_integer = (*car(parameters)).d;
         }
         else {
-            new_integer = (*operand).i;
+            new_integer = (*car(parameters)).i;
         }
         // Does math.
         return_integer = return_integer + new_integer;
@@ -428,42 +361,485 @@ Value *evalPlus(Value *args, Frame *frame) {
         (*result).type = INT_TYPE;
         (*result).i = (int) return_integer;
     }
-    paren--;
     return result;
+}
+// Returns fuction evalPlus().
+Value *primPlus(Value *args) {
+    return evalPlus(args); 
+}
+
+// ******************** Evaluates - commands. ********************
+Value *evalMinus(Value *args) {
+    // Tracks whether return value should be int or double.
+    bool return_real = 0;
+    Value *parameters = args;
+    
+    // Final return value.
+    double return_integer;
+    if ((*car(parameters)).type == DOUBLE_TYPE) {
+        return_real = 1;
+        return_integer = (*car(parameters)).d;
+    }
+    else {
+        return_integer = (*car(parameters)).i;
+    }
+    parameters = cdr(parameters);
+    
+    // Goes through arguments.
+    while ((*parameters).type != NULL_TYPE) {
+        // Tracks individual argument type.
+        bool real_number = 0;
+        double new_integer = 0;
+        
+        // Checks current argument's type.
+        if ((*car(parameters)).type == DOUBLE_TYPE) {
+            real_number = 1;
+            return_real = 1;
+        }
+        
+        // Error check for non-number arguments.
+        if ((*car(parameters)).type != INT_TYPE && (*car(parameters)).type != DOUBLE_TYPE) {
+            printf("Evaluation Error: incorrect argument in - command.\n");
+            texit(0);
+        }
+        // Places value into correct type.
+        if (real_number) {
+            new_integer = (*car(parameters)).d;
+        }
+        else {
+            new_integer = (*car(parameters)).i;
+        }
+        // Does math.
+        return_integer = return_integer - new_integer;
+        // Moves to next argument.
+        parameters = cdr(parameters);
+    }
+    // Creates result value.
+    Value *result = talloc(sizeof(Value));
+    // Extra: tracks final return value type.
+    if (return_real) {
+        (*result).type = DOUBLE_TYPE;
+        (*result).d = return_integer;
+    }
+    else {
+        (*result).type = INT_TYPE;
+        (*result).i = (int) return_integer;
+    }
+    return result;
+}
+// Returns function evalMinus().
+Value *primMinus(Value *args) {
+    return evalMinus(args); 
+}
+
+// ******************** Evaluates * commands. ********************
+Value *evalMult(Value *args) {
+    // Final return value.
+    double return_integer = 1;
+    // Tracks whether return value should be int or double.
+    bool return_real = 0;
+    Value *parameters = args;
+    
+    // Goes through arguments.
+    while ((*parameters).type != NULL_TYPE) {
+        // Tracks individual argument type.
+        bool real_number = 0;
+        double new_integer = 0;
+       
+        // Checks current argument's type.
+        if ((*car(parameters)).type == DOUBLE_TYPE) {
+            real_number = 1;
+            return_real = 1;
+        }
+        // Error check for non-number arguments.
+        if ((*car(parameters)).type != INT_TYPE && (*car(parameters)).type != DOUBLE_TYPE) {
+            printf("Evaluation Error: incorrect argument in * command.\n");
+            texit(0);
+        }
+        // Places value into correct type.
+        if (real_number) {
+            new_integer = (*car(parameters)).d;
+        }
+        else {
+            new_integer = (*car(parameters)).i;
+        }
+        // Does math.
+        return_integer = return_integer * new_integer;
+        // Moves to next argument.
+        parameters = cdr(parameters);
+    }
+    // Creates result value.
+    Value *result = talloc(sizeof(Value));
+    // Extra: tracks final return value type.
+    if (return_real) {
+        (*result).type = DOUBLE_TYPE;
+        (*result).d = return_integer;
+    }
+    else {
+        (*result).type = INT_TYPE;
+        (*result).i = (int) return_integer;
+    }
+    return result;
+}
+// Returns function evalMult().
+Value *primMult(Value *args) {
+    return evalMult(args); 
+}
+
+// ******************** Evaluates / commands. ********************
+Value *evalDiv(Value *args) {
+    // Tracks whether return value should be int or double.
+    bool return_real = 0;
+    Value *parameters = args;
+    
+    // Final return value.
+    double return_integer;
+    if ((*car(parameters)).type == DOUBLE_TYPE) {
+        return_real = 1;
+        return_integer = (*car(parameters)).d;
+    }
+    else {
+        return_integer = (*car(parameters)).i;
+    }
+    parameters = cdr(parameters);
+    
+    // Goes through arguments.
+    while ((*parameters).type != NULL_TYPE) {
+        // Tracks individual argument type.
+        bool real_number = 0;
+        double new_integer = 0;
+        
+        // Checks current argument's type.
+        if ((*car(parameters)).type == DOUBLE_TYPE) {
+            real_number = 1;
+            return_real = 1;
+        }
+        // Error check for non-number arguments.
+        if ((*car(parameters)).type != INT_TYPE && (*car(parameters)).type != DOUBLE_TYPE) {
+            printf("Evaluation Error: incorrect argument in / command.\n");
+            texit(0);
+        }
+        // Places value into correct type.
+        if (real_number) {
+            new_integer = (*car(parameters)).d;
+        }
+        else {
+            new_integer = (*car(parameters)).i;
+        }
+        // Does math.
+        return_integer = return_integer / new_integer;
+        // Moves to next argument.
+        parameters = cdr(parameters);
+    }
+    // Creates result value.
+    Value *result = talloc(sizeof(Value));
+    // Extra: tracks final return value type.
+    if (return_real) {
+        (*result).type = DOUBLE_TYPE;
+        (*result).d = return_integer;
+    }
+    else {
+        (*result).type = INT_TYPE;
+        (*result).i = (int) return_integer;
+    }
+    return result;
+}
+// Returns function evalDiv().
+Value *primDiv(Value *args) {
+    return evalDiv(args); 
+}
+
+// ******************** Evaluates modulo commands. ********************
+Value *evalMod(Value *args) {
+    // Final return value.
+    int return_integer = 0;
+    Value *parameters = args;
+        
+    // Checks current argument's type.
+    if ((*car(parameters)).type != INT_TYPE) {
+        printf("Evaluation Error: arguments must be integers yung blud.\n");
+        texit(0);
+    }
+    if ((*car(cdr(parameters))).type != INT_TYPE) {
+        printf("Evaluation Error: arguments must be integers yung blud.\n");
+        texit(0);
+    }
+    if ((*car(parameters)).type != INT_TYPE && (*car(parameters)).type != DOUBLE_TYPE) {
+        printf("Evaluation Error: incorrect argument in modulo command.\n");
+        texit(0);
+    }
+     
+    // Does math.
+    return_integer = (*car(parameters)).i % (*car(cdr(parameters))).i;
+    
+    // Creates result value.
+    Value *result = talloc(sizeof(Value));
+    (*result).type = INT_TYPE;
+    (*result).i = return_integer;
+    return result;
+}
+// Returns function evalMod().
+Value *primMod(Value *args) {
+    // Error checks for mod input.
+    if((*args).type != CONS_TYPE) {
+        printf("Evaluation error: modulo requires 2 arguments\n");
+        texit(0);
+    }
+    else if((*cdr(args)).type == NULL_TYPE){
+        printf("Evaluation error: modulo requires 2 arguments\n");
+        texit(0);
+    }
+    else if((*cdr(cdr(args))).type != NULL_TYPE){
+        printf("Evaluation error: modulo requires 2 arguments\n");
+        texit(0);
+    }
+    return evalMod(args); 
+}
+
+// ******************** Evaluates < commands. ********************
+Value *evalLT(Value *args) {
+    // Final return bool.
+    bool return_bool = 0;
+    // Tracks whether return value should be int or double.
+    bool return_real = 0;
+    Value *parameters = args;
+    
+    // Goes through arguments.
+    while ((*cdr(parameters)).type != NULL_TYPE) {
+        // Tracks individual argument type.
+        bool real_number = 0;
+        bool next_real_number = 0;
+        double new_integer = 0;
+        double next_integer = 0;
+        
+        // Checks current and next arguments' type.
+        if ((*car(parameters)).type == DOUBLE_TYPE) {
+            real_number = 1;
+        }
+        if ((*car(cdr(parameters))).type == DOUBLE_TYPE) {
+                next_real_number = 1;
+        }
+        
+        // Error check for non-number arguments.
+        if ((*car(parameters)).type != INT_TYPE && (*car(parameters)).type != DOUBLE_TYPE) {
+            printf("Evaluation Error: incorrect argument in < command.\n");
+            texit(0);
+        }
+        if ((*car(cdr(parameters))).type != INT_TYPE && (*car(cdr(parameters))).type != DOUBLE_TYPE) {
+            printf("Evaluation Error: incorrect argument in < command.\n");
+            texit(0);
+        }
+        
+        // Places current and next values into correct type.
+        if (real_number) {
+            new_integer = (*car(parameters)).d;
+        }
+        else {
+            new_integer = (*car(parameters)).i;
+        }
+        if (next_real_number) {
+            next_integer = (*car(cdr(parameters))).d;
+        }
+        else {
+            next_integer = (*car(cdr(parameters))).i;
+        }
+       
+        if (new_integer < next_integer) {
+            return_bool = 1;
+        }
+        else {
+            return_bool = 0;
+            break;
+        }
+        // Moves to next argument.
+        parameters = cdr(parameters);
+    }
+    Value *result = talloc(sizeof(Value));
+    (*result).type = BOOL_TYPE;
+    (*result).i = return_bool;
+    
+    return result;
+}
+Value *primLT(Value *args) {
+    if((*args).type != CONS_TYPE) {
+        printf("Evaluation error: < requires 2 arguments\n");
+        texit(0);
+    }
+    else if((*cdr(args)).type == NULL_TYPE){
+        printf("Evaluation error: < requires 2 arguments\n");
+        texit(0);
+    }
+    return evalLT(args); 
+}
+
+// ******************** Evaluates > commands. ********************
+
+Value *evalGT(Value *args) {
+    // Final return bool.
+    bool return_bool = 0;
+    // Tracks whether return value should be int or double.
+    bool return_real = 0;
+    Value *parameters = args;
+    
+    // Goes through arguments.
+    while ((*cdr(parameters)).type != NULL_TYPE) {
+        // Tracks individual argument type.
+        bool real_number = 0;
+        bool next_real_number = 0;
+        double new_integer = 0;
+        double next_integer = 0;
+        
+        // Checks current and next arguments' type.
+        if ((*car(parameters)).type == DOUBLE_TYPE) {
+            real_number = 1;
+        }
+        if ((*car(cdr(parameters))).type == DOUBLE_TYPE) {
+                next_real_number = 1;
+        }
+        
+        // Error check for non-number arguments.
+        if ((*car(parameters)).type != INT_TYPE && (*car(parameters)).type != DOUBLE_TYPE) {
+            printf("Evaluation Error: incorrect argument in > command.\n");
+            texit(0);
+        }
+        if ((*car(cdr(parameters))).type != INT_TYPE && (*car(cdr(parameters))).type != DOUBLE_TYPE) {
+            printf("Evaluation Error: incorrect argument in > command.\n");
+            texit(0);
+        }
+        
+        // Places current and next values into correct type.
+        if (real_number) {
+            new_integer = (*car(parameters)).d;
+        }
+        else {
+            new_integer = (*car(parameters)).i;
+        }
+        if (next_real_number) {
+            next_integer = (*car(cdr(parameters))).d;
+        }
+        else {
+            next_integer = (*car(cdr(parameters))).i;
+        }
+       
+        if (new_integer > next_integer) {
+            return_bool = 1;
+        }
+        else {
+            return_bool = 0;
+            break;
+        }
+        // Moves to next argument.
+        parameters = cdr(parameters);
+    }
+    Value *result = talloc(sizeof(Value));
+    (*result).type = BOOL_TYPE;
+    (*result).i = return_bool;
+    
+    return result;
+}
+Value *primGT(Value *args) {
+    if((*args).type != CONS_TYPE) {
+        printf("Evaluation error: > requires 2 arguments\n");
+        texit(0);
+    }
+    else if((*cdr(args)).type == NULL_TYPE){
+        printf("Evaluation error: > requires 2 arguments\n");
+        texit(0);
+    }
+    return evalGT(args); 
+}
+
+// ******************** Evaluates = commands. ********************
+
+Value *evalEQ(Value *args) {
+    // Final return bool.
+    bool return_bool = 0;
+    // Tracks whether return value should be int or double.
+    bool return_real = 0;
+    Value *parameters = args;
+    
+    // Goes through arguments.
+    while ((*cdr(parameters)).type != NULL_TYPE) {
+        // Tracks individual argument type.
+        bool real_number = 0;
+        bool next_real_number = 0;
+        double new_integer = 0;
+        double next_integer = 0;
+        
+        // Checks current and next arguments' type.
+        if ((*car(parameters)).type == DOUBLE_TYPE) {
+            real_number = 1;
+        }
+        if ((*car(cdr(parameters))).type == DOUBLE_TYPE) {
+                next_real_number = 1;
+        }
+        
+        // Error check for non-number arguments.
+        if ((*car(parameters)).type != INT_TYPE && (*car(parameters)).type != DOUBLE_TYPE) {
+            printf("Evaluation Error: incorrect argument in = command.\n");
+            texit(0);
+        }
+        if ((*car(cdr(parameters))).type != INT_TYPE && (*car(cdr(parameters))).type != DOUBLE_TYPE) {
+            printf("Evaluation Error: incorrect argument in = command.\n");
+            texit(0);
+        }
+        
+        // Places current and next values into correct type.
+        if (real_number) {
+            new_integer = (*car(parameters)).d;
+        }
+        else {
+            new_integer = (*car(parameters)).i;
+        }
+        if (next_real_number) {
+            next_integer = (*car(cdr(parameters))).d;
+        }
+        else {
+            next_integer = (*car(cdr(parameters))).i;
+        }
+       
+        if (new_integer == next_integer) {
+            return_bool = 1;
+        }
+        else {
+            return_bool = 0;
+            break;
+        }
+        // Moves to next argument.
+        parameters = cdr(parameters);
+    }
+    Value *result = talloc(sizeof(Value));
+    (*result).type = BOOL_TYPE;
+    (*result).i = return_bool;
+    
+    return result;
+}
+Value *primEQ(Value *args) {
+    if((*args).type != CONS_TYPE) {
+        printf("Evaluation error: = requires 2 arguments.\n");
+        texit(0);
+    }
+    else if((*cdr(args)).type == NULL_TYPE){
+        printf("Evaluation error: = requires 2 arguments.\n");
+        texit(0);
+    }
+    return evalEQ(args); 
 }
 
 // ******************** Evaluates null? commands. ********************
 Value *evalNull(Value *args) {
     bool is_null = 0;
-    //printf("LOOK AT ME NOW\n");
-   // display(args);
-    //printf("-----\n");
-    // Error Check on arguments (must be a linked list).
+    
     if ((*args).type == NULL_TYPE) {
-        // printf("Evaluation Error: incorrect null? argument.\n");
-        // texit(0);
         is_null = 1;
     }
     else if ((*args).type == CONS_TYPE) {
-      //  printf("CDR: ");
-       // display(cdr(args));
-       // printf("ARGS: ");
-       // display(args);
-       // printf("car args\n");
-      //  display(car(args));
-        
-        //printf("came here\n");
-        //printf(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
-      //  display(car(args));
         if((*car(args)).type == CONS_TYPE) {
-           // printf("came here 2\n");
             if((*car(car(args))).type == NULL_TYPE) {
-                //printf("came here 3\n");
                 is_null = 1;
             }
         }
         else if ((*car(args)).type == NULL_TYPE) {
-            //printf("car was null\n");
             is_null = 1;
         }
         
@@ -478,167 +854,230 @@ Value *evalNull(Value *args) {
     (*result).i = is_null;
     return result;
 }
-//Evaluate the Car function
+// Returns function evalNull().
+Value *primNull(Value *args) {
+    if((*cdr(args)).type != NULL_TYPE) {
+        printf("Evaluation error: null only takes 1 argument.\n");
+        texit(0);
+    }
+    Value *return_val = evalNull(args);
+    return return_val;
+}
+
+// ******************** Evaluate the Car command ********************
 Value *evalCar(Value *args) {
-    paren++;
-     
     if((*args).type != CONS_TYPE) {
-        printf("Evaluation Error: incorrect Car arguments\n");
+        printf("Evaluation Error: incorrect Car arguments.\n");
         texit(0);
     }
+    Value *return_val = talloc(sizeof(Value));
+    (*return_val).type = CONS_TYPE;
+    (*return_val).c.cdr = makeNull();
+    
+    (*return_val).c.car = car(car(car(args)));
+    
 
-    paren--;
-    return car(args);
+    return return_val;
+}
+Value *primCar(Value *args) {
+    if((*args).type != CONS_TYPE){
+        printf("Evaluation error: car only takes lists.\n");
+        texit(0);
+    }
+    else if((*cdr(args)).type != NULL_TYPE) {
+        printf("Evaluation error: car only takes 1 argument.\n");
+        texit(0);
+    }
+    else if((*car(args)).type != CONS_TYPE){
+        printf("Evaluation error: car only takes lists.\n");
+        texit(0);
+    }
+    else if((*car(car(args))).type != CONS_TYPE){
+        printf("Evaluation error: car only takes lists.\n");
+        texit(0);
+    }
+    return evalCar(args);
 }
 
+// ******************* Evaluates CDR command ******************
 Value *evalCdr(Value *args) {
-    paren++;
-    // printf("displaying args in EVALCDR##################\n");
-    // display(args);
- 
     if((*args).type != CONS_TYPE) {
-        printf("Evaluation Error: incorrect Cdr arguments\n");
+        printf("Evaluation Error: incorrect Cdr arguments.\n");
         texit(0);
     }
-   
-    paren--;
-    return cdr(args);
+    Value *return_val = talloc(sizeof(Value));
+    (*return_val).type = CONS_TYPE;
+    
+    (*return_val).c.cdr = makeNull();
+    (*return_val).c.car = cdr(car(car(args)));
+    return return_val;
+}
+Value *primCdr(Value *args) {
+    if((*args).type != CONS_TYPE){
+        printf("Evaluation error: cdr only takes lists.\n");
+        texit(0);
+    }
+    else if((*cdr(args)).type != NULL_TYPE) {
+        printf("Evaluation error: cdr only takes 1 argument.\n");
+        texit(0);
+    }
+    else if((*car(args)).type != CONS_TYPE){
+        printf("Evaluation error: cdr only takes lists.\n");
+        texit(0);
+    }
+    else if((*car(car(args))).type != CONS_TYPE){
+        printf("Evaluation error: cdr only takes lists.\n");
+        texit(0);
+    }
+    return evalCdr(args);
 }
 
-Value *removeQuote(Value *value) {
-    Value *return_val;
-    // display(value);
-    if((*value).type == CONS_TYPE) {
-        if((*car(value)).type == CONS_TYPE) {
-            if (!strcmp((*car(car(value))).s,"quote")) {
-                return_val = cdr(car(value));
-                return return_val;
-            }
-        }
-    }
-           
-    return value;
-}
+// ******************* Evaluates cons command ****************** 
 Value *evalCons(Value *vehicle, Value *kudur) {
-    paren ++;
     Value *Cons_cell = talloc(sizeof(Value));
-    Value *quote_cell = talloc(sizeof(Value));
-    Value *quote = talloc(sizeof(Value));
-    Value *top_cell = talloc(sizeof(Value));
-
     (*Cons_cell).type = CONS_TYPE;
-    (*quote_cell).type = CONS_TYPE;
-    (*quote).type = SYMBOL_TYPE;
-    (*top_cell).type = CONS_TYPE;
-
-    //printf("display kudur\n");
-    //display(kudur);
-
-    //printf("lalalalla\n");
-
-    //printf("car_cell car assigned\n");
-    //display(vehicle);
     
-    //printf("poooppopopop\n");
-    vehicle = removeQuote(vehicle);
-    kudur = removeQuote(kudur);
-    
-
-
-    
-    (*Cons_cell).c.car = cons(vehicle,kudur);
-    (*Cons_cell).c.cdr = makeNull();
-    
-    
-    (*quote).s = "quote";
-    
-    (*quote_cell).c.car = quote;
-    (*quote_cell).c.cdr = Cons_cell;
-    (*top_cell).c.car = quote_cell;
-    (*top_cell).c.cdr = makeNull();
-    paren--;
-    //printf("RETURNING\n");
-   
-    //display(top_cell);
-    return top_cell;
-}
-// Given code and a list of arguments, applies arguments to code and returns result.
-Value *apply(Value *function, Value *args) {
-    // Creates new frame.
-    // printf("displaying args,,,,,,,,,,\n");
-    // display(args);
-    Value *parameters = (*function).cl.paramNames;
-    Frame *new_frame = talloc(sizeof(Frame));
-    (*new_frame).parent = (*function).cl.frame;
-    Value *current_binding = makeNull();
-    bool error_check = 1;
-    
-    while ((*parameters).type != NULL_TYPE) {
-        // Error checks for nested assignments in let.
-        if ((*parameters).type != CONS_TYPE) {
-            printf("Evaluation Error: incorrect lambda parameters.\n");
-            texit(0);
-        }
-        if ((*car(parameters)).type == NULL_TYPE) {
-            printf("Evaluation Error: incorrect variable assignment syntax.\n");
-            texit(0);
-        }
-        if (!error_check) {
-            printf("Evaluation Error: incorrect number of parameters given.\n");
-            texit(0);
-        }
-        
-        // Find variable and associated value.
-        Value *bind_var = car(parameters);
-        Value *bind_val;
-        // Deals with weird input.
-        if ((*args).type != CONS_TYPE) {
-            bind_val = args;
-            error_check = 0;
-        }
-        else {
-            bind_val = car(args);
-            args = cdr(args);
-        }
-       
-        // Check to see if commands are correct syntax.
-        if ((*bind_var).type != SYMBOL_TYPE) {
-            printf("Evaluation Error: variable in apply not available for assignment.\n");
-            texit(0);
-        }
-        
-        // Bind command.
-        current_binding = bind(bind_var,bind_val,current_binding);
-        
-        parameters = cdr(parameters);
+    if((*vehicle).type == CONS_TYPE) {
+        vehicle = car(vehicle);
     }
-     // Reverse to put into correct order.
-    current_binding = reverse(current_binding);
-    // Set binding list to new frame.
-    (*new_frame).bindings = current_binding;
     
-    // Evaluates given code with arguments added to binding.
-    command_bool = 0;
-    Value *result = talloc(sizeof(Value));
-    //printf("ASDFASDF\n");
-    if ((*car((*function).cl.functionCode)).type != CONS_TYPE) {
-        result = car((*function).cl.functionCode);
+    Value *list = makeNull();
+    Value *dot = talloc(sizeof(Value));
+    (*dot).type = SYMBOL_TYPE;
+    (*dot).s = ".";
+    
+    //printf("VEHICLE:\n");
+    //display(vehicle);
+    //printf("-----\n");
+    //printf("KUDUR:\n");
+    //printTree(kudur);
+    //printf("\n");
+    //printf("-----\n");
+    
+    if((*car(kudur)).type != CONS_TYPE) {
+        if ((*car(kudur)).type != NULL_TYPE) {
+            list = cons(dot, list);
+            list = cons(car(kudur), list);
+        }
+    }
+    else if ((*car(car(kudur))).type != CONS_TYPE) {
+        if ((*car(car(kudur))).type != NULL_TYPE) {
+            if ((*cdr(car(kudur))).type != NULL_TYPE) {
+                printf("Evaluation Error: cons requires 2 arguments.\n");
+                texit(0);
+            }
+            list = cons(dot, list);
+            list = cons(car(car(kudur)), list);
+        }
     }
     else {
-        result = eval((*function).cl.functionCode, new_frame);
-    }
-   
+        kudur = car(car(kudur));
+        
+        while((*kudur).type != NULL_TYPE) {
     
-    paren--;
+            list = cons(car(kudur), list);
+            kudur = cdr(kudur);
+        }
+    }  
+    list = reverse(list);
+    list = cons(vehicle, list);
     
-    return result;
+    (*Cons_cell).c.car = list;
+    (*Cons_cell).c.cdr = makeNull();
+    
+    //printf("Result:\n");
+    //printTree(list);
+    //printf("\n");
+    //printf("+++++\n");
+    return Cons_cell;
 }
 
+Value *primCons(Value *args) {
+    if((*args).type != CONS_TYPE) {
+        printf("Evaluation error: cons requires 2 arguments.\n");
+        texit(0);
+    }
+    else if((*cdr(args)).type == NULL_TYPE){
+        printf("Evaluation error: cons requires 2 arguments.\n");
+        texit(0);
+    }
+    else if((*cdr(cdr(args))).type != NULL_TYPE){
+        printf("Evaluation error: cons requires 2 arguments.\n");
+        texit(0);
+    }
+    
+    Value *vehicle = car(args);
+    Value *kudur = cdr(args);
+    return evalCons(vehicle, kudur);
+}
+// ******************* Applies arguments to commands ******************
+Value *apply(Value *function, Value *args) {
+    Value *result;
+    
+    if ((*function).type == PRIMITIVE_TYPE) {
+        result = (*function).pf(args);
+    }
+    else {
+        // Creates new frame.
+        Value *parameters = (*function).cl.paramNames;
+        Frame *new_frame = talloc(sizeof(Frame));
+        (*new_frame).parent = (*function).cl.frame;
+        Value *current_binding = makeNull();
+    
+        while ((*parameters).type != NULL_TYPE) {
+            // Error checks for nested assignments in let.
+            if ((*parameters).type != CONS_TYPE) {
+                printf("Evaluation Error: incorrect lambda parameters.\n");
+                texit(0);
+            }
+            if ((*car(parameters)).type == NULL_TYPE) {
+                printf("Evaluation Error: incorrect variable assignment syntax.\n");
+                texit(0);
+            }   
+            
+            // Find variable and associated value.
+            Value *bind_var = car(parameters);
+            Value *bind_val;
+            // Deals with weird input.
+            if ((*args).type != CONS_TYPE) {
+                bind_val = args;
+            }
+            else {
+                bind_val = car(args);
+                args = cdr(args);
+            }
+       
+            // Check to see if commands are correct syntax.
+            if ((*bind_var).type != SYMBOL_TYPE) {
+                printf("Evaluation Error: variable in apply not available for assignment.\n");
+                texit(0);
+            }
+        
+            // Bind command.
+            current_binding = bind(bind_var,bind_val,current_binding);
+        
+            parameters = cdr(parameters);
+        }
+        // Reverse to put into correct order.
+        current_binding = reverse(current_binding);
+        // Set binding list to new frame.
+        (*new_frame).bindings = current_binding;
+    
+        // Evaluates given code with arguments added to binding.
+        Value *fc = (*function).cl.functionCode;
+    
+        while ((*fc).type != NULL_TYPE) {
+            if((*fc).type == CONS_TYPE) {
+                result = eval(car(fc), new_frame);
+                fc = cdr(fc);
+            }
+        }  
+    }
+    return result;
+}
 // Shell function that calls eval() on first object.
 void interpret(Value *tree) {
     Value *val = reverse(tree);
-    paren = 0;
-    quote_bool = 0;
     
     // Creates top frame.
     Frame *current_frame = talloc(sizeof(Frame));
@@ -646,84 +1085,66 @@ void interpret(Value *tree) {
     (*current_frame).parent = NULL;
     (*current_frame).bindings = current_binding;
     
-    Value *return_val = eval(val, current_frame);
-}
-
-Value *evalEach(Value *args, Frame *frame) {
-    Value *result = talloc(sizeof(Value));
-    result = makeNull();
+    // Binds primitives to frames.
+    primBind("+", primPlus ,current_frame);
+    primBind("-", primMinus ,current_frame);
+    primBind("*", primMult ,current_frame);
+    primBind("/", primDiv ,current_frame);
+    primBind("modulo", primMod ,current_frame);
+    primBind("<", primLT ,current_frame);
+    primBind(">", primGT ,current_frame);
+    primBind("=", primEQ ,current_frame);
+    primBind("cdr", primCdr,current_frame);
+    primBind("car", primCar,current_frame);
+    primBind("null?", primNull,current_frame);
+    primBind("cons", primCons, current_frame);
     
-    while ((*args).type != NULL_TYPE) {
-       // printf("ARGS\n");
-        //display(args);
-        if((*args).type == CONS_TYPE) {
-            Value *evaled_args = eval(car(args),frame);
-           // printf("&&&&&&&&&&&&&&&&&&&&&&&&&&\n");
-            //display(evaled_args);
-            result = cons(evaled_args,result);
+    Value *result;
+    while ((*val).type != NULL_TYPE) {
+        if((*val).type == CONS_TYPE) {
+            result = eval(car(val),current_frame);
+            if((*result).type == CONS_TYPE) { 
+                printTree(reverse(result));
+                printf("\n");
+            }
+            else {
+                display(result);
+            }
         }
-        args = cdr(args);
+        else {
+            result = eval(val,current_frame);
+            display(result);
+        }
+        val = cdr(val);
     }
-   // printf("RETURNING FROM EVALEACHF222222\n");
-   // display(result);
-    result = reverse(result);
-    return result;
 }
 
 // Evaluates things.
 Value *eval(Value *expr, Frame *frame) {
-   // printf("EVALUATING\n");
     Value *result = expr;
     
     switch (expr->type) {
     case INT_TYPE:
-        if (paren == 0) {
-            printf("%i\n", (*expr).i);
-        }
-        break;
+    break;
     case DOUBLE_TYPE:
-        if (paren == 0) {
-            printf("%f\n", (*expr).d);
-        }
-        break;
+    break;
     case STR_TYPE:
-        if (paren == 0) {
-            printf("%s\n", (*expr).s);
-        }
-        break;
+    break;
     case BOOL_TYPE:
-        if (paren == 0) {
-            printf("%i\n", (*expr).i);
-        }
-        break;
+    break;
     case SYMBOL_TYPE:
-       // printf("looking for: ");
-       // display(expr);
-        result = lookUpSymbol(expr, frame);
-        //printf("done\n");
-       // display(result);
-        //printf("done looking up symbol\n");
-        break;
+        return lookUpSymbol(expr, frame);
+    break;
     case CONS_TYPE:
         if ((*car(expr)).type == SYMBOL_TYPE) {
             if (!strcmp((*car(expr)).s,"if")) {
                 result = evalIf(cdr(expr),frame);
-                if ((*result).type != CONS_TYPE && paren == 0) {
-                    display(result);
-                }
             }
             else if (!strcmp((*car(expr)).s,"let")) {
                 result = evalLet(cdr(expr),frame);
-                if ((*result).type != CONS_TYPE && paren == 0) {
-                    display(result);
-                }
             }
             else if (!strcmp((*car(expr)).s,"quote")) {
                 result = evalQuote(cdr(expr),frame);
-                if (paren == 0) {
-                    //printTree(reverse(result));
-                    //printf("\n");
-                }
             }
             else if (!strcmp((*car(expr)).s,"define")) {
                 result = evalDefine(cdr(expr),frame);
@@ -731,103 +1152,18 @@ Value *eval(Value *expr, Frame *frame) {
             else if (!strcmp((*car(expr)).s,"lambda")) {
                 result = evalLambda(cdr(expr),frame);
             }
-            else if (!strcmp((*car(expr)).s,"+")) {
-                result = evalPlus(cdr(expr), frame);
-                if ((*result).type != CONS_TYPE && paren == 0) {
-                    display(result);
-                }
-            }
-            else if (!strcmp((*car(expr)).s,"null?")) {
-               // printf("evaling args: ");
-                //display(cdr(expr));
-                if ((*cdr(expr)).type != CONS_TYPE) {
-                     printf("Evaluation Error: no null? argument.\n");
-                     texit(0);
-                }
-               /* if ((*cdr(cdr(expr))).type != NULL_TYPE) {
-                    printf("Evaluation Error: too many null? arguements.\n");
-                    texit(0);
-                }*/
-                Value *evaled = eval(car(cdr(expr)), frame);
-               // printf("args: ");
-                //display(evaled);
-                result = evalNull(evaled);
-                if ((*result).type != CONS_TYPE && paren == 0) {
-                    display(result);
-                }
-            }
-            else if (!strcmp((*car(expr)).s,"car") || !strcmp((*car(expr)).s,"cdr")) {
-                //printf("in car\n");
-                if ((*cdr(expr)).type != CONS_TYPE) {
-                     printf("Evaluation Error: no null? argument.\n");
-                     texit(0);
-                }
-                if ((*cdr(cdr(expr))).type != NULL_TYPE) {
-                    printf("Evaluation Error: too many null? arguements.\n");
-                    texit(0);
-                }
-                Value *evaled = eval(car(cdr(expr)), frame);
-               // printf("args for car: ");
-               // display(evaled);
-                if(!strcmp((*car(expr)).s,"car")) {
-                    result = evalCar(evaled);
-                }
-                else {
-                    result = evalCdr(evaled);
-                }
-                if ((*result).type != CONS_TYPE && paren == 0) {
-                    display(result);
-                }
-            }
-            
-            else if(!strcmp((*car(expr)).s,"cons")) {
-                Value *evaled_car = eval(car(cdr(expr)), frame);
-                Value *evaled_cdr = eval(car(cdr(cdr(expr))), frame);
-                result = evalCons(evaled_car, evaled_cdr);
-                printTree(result);
-                printf("\n");
-                
-            }
-            // Checks whether a symbol is a user made command or a variable.
-            else if ((commandCheck(expr,frame)) && (command_bool == 1)){
-                paren++;
-                command_bool = 0;
-                Value *evalOperator = eval(car(expr),frame);
-                command_bool = 0;
-                
-                Value *evalArgs = evalEach(cdr(expr),frame);
-                
-           
-                // Applies evaluated operator and arguments.
-                result = apply(evalOperator,evalArgs); 
-                
-                if (paren == 0) {
-                    display(result);
-                }
-            }
-            // Don't really know why we need this.
-            else if (commandCheck(expr, frame)){
-                result = eval(car(expr), frame);
-            }
-            // Other commands go here.
             else {
-                printf("Evaluation Error: undefined variable.\n");
-                texit(0);
+                Value *evaledOperator = eval(car(expr), frame);
+                Value *evaledArgs = evalEach(cdr(expr), frame);
+                result = apply(evaledOperator,evaledArgs);
             }
         }
-        // User made commands.
-        else if ((*car(expr)).type == CONS_TYPE) {
-            command_bool = 1;
-            result = eval(car(expr),frame);
-            eval(cdr(expr),frame);
-        }
-    
         else {
-            eval(car(expr),frame);
-            if ((*cdr(expr)).type != NULL_TYPE) {
-                eval(cdr(expr),frame);
-            }
+            printf("Evaluation Error: expected a procedure that can be applied to arguments.\n");
+            texit(0);
         }
+      
+       
     break;
     case NULL_TYPE: 
     break;
@@ -844,7 +1180,5 @@ Value *eval(Value *expr, Frame *frame) {
     case PRIMITIVE_TYPE:
     break;
     }
-   // printf("returning result\n");
-    //display(result);
     return result;
 }
