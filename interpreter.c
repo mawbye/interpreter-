@@ -26,13 +26,21 @@
 
 // Finds the assigned value for a symbol.
 Value *lookUpSymbol(Value *expr, Frame *frame) {
+    //printf("Looking for: ");
+    //display(expr);
     Frame *current_frame = frame;
     // While we aren't looking at the top frame:
     while (current_frame != NULL) {
         Value *list = (*current_frame).bindings;
         // Go through the list of variables for that frame:
         while ((*list).type != NULL_TYPE) {
+            //printf("Looking at:\n");
+            //display(car(car(list)));
+            //printf("-----\n");
             if (!strcmp((*expr).s,(*car(car(list))).s)) {
+                //printf("Found:\n");
+                //display(cdr(car(list)));
+                //printf("-----\n");
                 return cdr(car(list));
             }
             list = cdr(list);
@@ -125,25 +133,14 @@ Value *evalIf(Value *args, Frame *frame) {
             printf("Evaluation Error: condition doesn't evaluate to boolean.\n");
             texit(0);
         }
-        else if ((*condition).type == SYMBOL_TYPE) {
+        else {
             condition = eval(condition,current_frame);
-        }
-        else if ((*condition).type == CONS_TYPE) {
-            // Deals with commands/cases that return a CONS_TYPE when evaluated.
-            Value *sub = eval(condition,current_frame);
-            if ((*sub).type == CONS_TYPE) {
-                condition = car(sub);
-            }
-            else {
-                condition = sub;
-            }
         }
     }
     
     // Evaluates conditions that are booleans.
     if ((*condition).type == BOOL_TYPE) {
         if ((*condition).i == 1) {
-            
             return_value = car(cdr(args));
         }
         else {
@@ -198,7 +195,7 @@ Value *evalLet(Value *args, Frame *frame) {
         
         // Find variable and associated value.
         Value *bind_var = car(car(parameters));
-        Value *bind_val = car(cdr(car(parameters)));
+        Value *bind_val = eval(car(cdr(car(parameters))),frame);
         
         // Check to see if commands are correct syntax.
         if ((*bind_var).type != SYMBOL_TYPE) {
@@ -206,14 +203,8 @@ Value *evalLet(Value *args, Frame *frame) {
             texit(0);
         }
         
-        // Evaluates commands in variable assignment.
-        if ((*bind_val).type == CONS_TYPE) {
-            bind_val = eval(bind_val,frame);
-        }
-        
         // Bind pair.
         current_binding = bind(bind_var,bind_val,current_binding);
-        
         parameters = cdr(parameters);
     }
     // Reverse to put into correct order.
@@ -223,7 +214,7 @@ Value *evalLet(Value *args, Frame *frame) {
     
     // Error check if body of let command exists.
     if ((*cdr(args)).type != CONS_TYPE) {
-        printf("Evaluation Error: no body in let.\n");
+        printf("Evaluation Error: incorrect body in let.\n");
         texit(0);
     }
     if ((*cdr(cdr(args))).type != NULL_TYPE) {
@@ -236,6 +227,88 @@ Value *evalLet(Value *args, Frame *frame) {
     
     // Evaluate body in proper frame.
     Value *return_value = eval(body, new_frame);
+    return return_value;
+}
+
+// ******************** Evaluates Let* command ********************
+Value *evalLetStar(Value *args, Frame *frame) {
+    // Boolean value to determine first parameter.
+    bool first_parameter = 1;
+    
+    // Create a new pointer, e.
+    Value *e = talloc(sizeof(Value));
+    (*e).type = PTR_TYPE;
+    //Create a new frame.
+    Frame *new_frame = talloc(sizeof(Frame));
+    // Point e towards the current frame.
+    (*e).p = frame;
+    (*new_frame).parent = (*e).p;
+    
+    // Error checks for let.
+    if ((*args).type != CONS_TYPE) {
+        printf("Evaluation Error: let requires a variable assignment and body.\n");
+        texit(0);
+    }
+    
+    Value *parameters = car(args);
+    // Put contents of let into bindings.
+    Value *current_binding = makeNull();
+    
+    // Creates a copy of the initial inputed frame.
+    while ((*parameters).type != NULL_TYPE) {
+        // Error checks for nested assignments in let.
+        if ((*parameters).type != CONS_TYPE || (*car(parameters)).type != CONS_TYPE) {
+            printf("Evaluation Error: let requires nested list.\n");
+            texit(0);
+        }
+        if ((*car(car(parameters))).type == NULL_TYPE ||
+            (*cdr(car(parameters))).type == NULL_TYPE ||
+            (*car(cdr(car(parameters)))).type == NULL_TYPE ||
+            (*cdr(cdr(car(parameters)))).type != NULL_TYPE) {
+            printf("Evaluation Error: incorrect variable assignment syntax.\n");
+            texit(0);
+        }
+        
+        // Find variable and associated value.
+        Value *bind_var = car(car(parameters));
+        Value *bind_val;
+        // If first parameter is not contained in let
+        if (first_parameter) {
+            bind_val = eval(car(cdr(car(parameters))),frame);
+        }
+        else {
+            bind_val = eval(car(cdr(car(parameters))),new_frame);
+        }
+        
+        // Check to see if commands are correct syntax.
+        if ((*bind_var).type != SYMBOL_TYPE) {
+            printf("Evaluation Error: variable in let not available for assignment.\n");
+            texit(0);
+        }
+        
+        // Bind pair.
+        current_binding = bind(bind_var,bind_val,current_binding);
+        // Set binding list to new frame.
+        (*new_frame).bindings = current_binding;
+        parameters = cdr(parameters);
+        first_parameter = 0;
+    }
+    
+    // Error check if body of let command exists.
+    if ((*cdr(args)).type != CONS_TYPE) {
+        printf("Evaluation Error: incorrect body in let.\n");
+        texit(0);
+    }
+    if ((*cdr(cdr(args))).type != NULL_TYPE) {
+        printf("Evaluation Error: let command contains too many arguments.\n");
+        texit(0);
+    }
+    
+    // Set up body of let frame.
+    Value *body = car(cdr(args));
+    
+    // Evaluate body in proper frame.
+    Value *return_value = eval(body,new_frame);
     return return_value;
 }
 
@@ -308,6 +381,105 @@ Value *evalLambda(Value *args, Frame *frame) {
     (*closure).cl.frame = frame;
     
     return closure;
+}
+
+// ********************* Evaluates and command ********************
+Value *evalAnd(Value *args, Frame *frame) {
+    bool return_bool = 1;
+    
+    while ((*args).type != NULL_TYPE) {
+        Value *condition = eval(car(args),frame);
+        if ((*condition).type != BOOL_TYPE) {
+            printf("Evaluation Error: and command does not evaluate to boolean.\n");
+            texit(0);
+        }
+        if (!(*condition).i) {
+            return_bool = 0;
+            break;
+        }
+        args = cdr(args);
+    }
+    
+    Value *result = talloc(sizeof(Value));
+    (*result).type = BOOL_TYPE;
+    (*result).i = return_bool;
+    
+    return result;
+}
+
+// ********************* Evaluates or command ********************
+Value *evalOr(Value *args, Frame *frame) {
+    bool return_bool = 0;
+    
+    while ((*args).type != NULL_TYPE) {
+        Value *condition = eval(car(args),frame);
+        if ((*condition).type != BOOL_TYPE) {
+            printf("Evaluation Error: or command does not evaluate to boolean.\n");
+            texit(0);
+        }
+        if ((*condition).i) {
+            return_bool = 1;
+            break;
+        }
+        args = cdr(args);
+    }
+    
+    Value *result = talloc(sizeof(Value));
+    (*result).type = BOOL_TYPE;
+    (*result).i = return_bool;
+    
+    return result;
+}
+
+void evalSet(Value *args, Frame *frame) {
+    bool found = 0;
+    
+    // Error Check
+    if ((*args).type != CONS_TYPE) {
+        printf("Evaluation Error: set! requires symbol as first argument.\n");
+        texit(0);
+    }
+    if ((*car(args)).type != SYMBOL_TYPE) {
+        printf("Evaluation Error: set! requires symbol as first argument.\n");
+        texit(0);
+    }
+    if ((*cdr(args)).type != CONS_TYPE) {
+        printf("Evaluation Error: set! requires two arguments.\n");
+        texit(0);
+    }
+    
+    Value *expr = car(args);
+    Value *new_value = eval(car(cdr(args)),frame);
+    
+    Frame *current_frame = frame;
+    // While we aren't looking at the top frame:
+    while (current_frame != NULL) {
+        Value *list = (*current_frame).bindings;
+        // Go through the list of variables for that frame:
+        while ((*list).type != NULL_TYPE) {
+            if (!strcmp((*expr).s,(*car(car(list))).s)) {
+                (*(*list).c.car).c.cdr = new_value;
+                found = 1;
+            }
+            list = cdr(list);
+        }
+        // Move to the previous frame:
+        current_frame = (*current_frame).parent;
+    }
+    if (current_frame == NULL && !found) {
+        printf("Evaluation Error: unassigned variable.\n");
+        texit(0);
+    }
+}
+
+// ******************** Evaluates begin command. ********************
+Value *evalBegin(Value *args, Frame *frame) {
+    return 0;
+}
+
+// ******************** Evaluates cond command. ********************
+Value *evalCond(Value *args, Frame *frame) {
+    return 0;
 }
 
 // **********************************************************
@@ -1068,11 +1240,12 @@ Value *apply(Value *function, Value *args) {
     
         while ((*fc).type != NULL_TYPE) {
             if((*fc).type == CONS_TYPE) {
-                result = eval(car(fc), new_frame);
+                result = eval(car(fc),new_frame);
                 fc = cdr(fc);
             }
         }  
     }
+    
     return result;
 }
 // Shell function that calls eval() on first object.
@@ -1103,9 +1276,12 @@ void interpret(Value *tree) {
     while ((*val).type != NULL_TYPE) {
         if((*val).type == CONS_TYPE) {
             result = eval(car(val),current_frame);
-            if((*result).type == CONS_TYPE) { 
+            if((*result).type == CONS_TYPE) {
                 printTree(reverse(result));
                 printf("\n");
+            }
+            else if ((*result).type == CLOSURE_TYPE) {
+                printf("<Procedure()>\n");
             }
             else {
                 display(result);
@@ -1152,9 +1328,31 @@ Value *eval(Value *expr, Frame *frame) {
             else if (!strcmp((*car(expr)).s,"lambda")) {
                 result = evalLambda(cdr(expr),frame);
             }
+            else if (!strcmp((*car(expr)).s,"let*")) {
+                result = evalLetStar(cdr(expr),frame);
+            }
+            else if (!strcmp((*car(expr)).s,"letRec")) {
+                //result = evalLetrec(cdr(expr),frame);
+            }
+            else if (!strcmp((*car(expr)).s,"and")) {
+                result = evalAnd(cdr(expr),frame);
+            }
+            else if (!strcmp((*car(expr)).s,"or")) {
+                result = evalOr(cdr(expr),frame);
+            }
+            else if (!strcmp((*car(expr)).s,"begin")) {
+                //result = evalLetrec(cdr(expr),frame);
+            }
+            else if (!strcmp((*car(expr)).s,"set!")) {
+                evalSet(cdr(expr),frame);
+            }
+            else if (!strcmp((*car(expr)).s,"cond")) {
+                //result = evalLetrec(cdr(expr),frame);
+            }
             else {
-                Value *evaledOperator = eval(car(expr), frame);
-                Value *evaledArgs = evalEach(cdr(expr), frame);
+                Value *evaledOperator = eval(car(expr),frame);
+                Value *evaledArgs = evalEach(cdr(expr),frame);
+                
                 result = apply(evaledOperator,evaledArgs);
             }
         }

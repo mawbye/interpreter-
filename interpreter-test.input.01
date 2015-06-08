@@ -1,10 +1,20 @@
-(+ 3 (+ 5 6))
-(+ 3.0 (+ 5 6))
+(define letTest
+    (lambda (bool)
+        (let ((x 3) (y 5))
+            (let ((x y) (y x))
+                (if bool x y)))))
 
-(define add5
-    (lambda (x)
-        (+ x 5)))
+(define letStarTest
+    (lambda (bool)
+        (let ((x 3) (y 5))
+            (let* ((x y) (y x))
+                (if bool x y)))))
 
-(add5 20)
+"Should print 5 3:"
+(letTest #t)
+(letTest #f)
 
-"TEST CASE NUMBER 1: + demos."
+"Should print 5 5:"
+(letStarTest #t)
+(letStarTest #f)
+        

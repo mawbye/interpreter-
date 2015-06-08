@@ -1,6 +1,4 @@
-(cdr (quote (1 2 3)))
-(cdr (cdr (quote (1 2 3))))
-(cdr (cdr (cdr (quote (1 2 3)))))
-(cdr (cdr (cdr (cdr (quote (1 2 3))))))
-
-"TEST CASE NUMBER 2."
+(let ((sum (lambda (x)
+    (if (= x 0)
+        0
+        (+ x (sum (- x 1))))))) (sum 5))
