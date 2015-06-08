@@ -1,4 +1,19 @@
-(let ((sum (lambda (x)
-    (if (= x 0)
-        0
-        (+ x (sum (- x 1))))))) (sum 5))
+(* 1 2 3 4 5 (quote 6))
+
+(/ 100 2)
+
+(modulo 3 2)
+
+(< 100 5)
+
+(> 100 5)
+
+(if (= (+ 3 3 3 3 3) (* 3 5)) "I worked" "I failed")
+
+(let ((x 3) (y 5))
+    (let* ((x y) (y x))
+        (if (= x y) "Used letStar()" "Used let()")))
+        
+(let ((x 3) (y 5))
+    (let ((x y) (y x))
+        (if (= x y) "Used letStar()" "Used let()")))

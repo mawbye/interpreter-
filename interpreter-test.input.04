@@ -1,12 +1,17 @@
-(define length
-  (lambda (L)
-    (if (null? L)
-        0
-        (+ 1 (length (cdr L))))))
+(define first-n
+    (lambda (list n)
+    (if (= n 0)
+        (quote ())
+        (cons (car list) (first-n (cdr list) (- n 1))))))
+        
+(define nth
+  (lambda (list n)
+    (cond ((null? list) #f)
+          ((= n 1) (car list))
+          ((= n n) (nth (cdr list) (- n 1))))))
 
-(length (quote ()))
-(length (quote (4 5 6)))
-(length (quote (1 2 3 4 5 6 (quote (2)))))
-(length (quote ("cat" "dog" "fish" "pig")))
+(define primes (quote (2 3 5 7 11 13 17 19 23 29)))
 
-"TEST CASE NUMBER 4: Demo code."
+(first-n primes 4)
+(nth primes 10)
+(nth primes 11)

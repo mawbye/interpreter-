@@ -1,14 +1,18 @@
-(define not
-    (lambda (bool)
-        (if bool #f #t)))
+(define first-n
+    (lambda (list n)
+    (if (= n 0)
+        (quote ())
+        (cons (car list) (first-n (cdr list) (- n 1))))))
+        
+(define nth
+  (lambda (list n)
+    (cond ((null? list) #f)
+          ((= n 1) (car list))
+          ((= n n) (nth (cdr list) (- n 1))))))
 
-(define flip-flop
-  (let ((state #f))
-    (lambda ()
-      (set! state (not state))
-      state)))
+(define primes (quote (2 3 5 7 11 13 17 19 23 29)))
 
-(flip-flop)
-(flip-flop)
-(flip-flop)
-(flip-flop)
+(first-n primes 3)
+(nth primes 5)
+
+

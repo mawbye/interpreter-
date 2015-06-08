@@ -82,7 +82,7 @@ Value *tokenize() {
             Value *token = talloc(sizeof(Value));
             (*token).type = STR_TYPE;
             (*token).s = string;
-            list = cons(token, list);
+            // list = cons(token, list);
             charRead = fgetc(stdin);
         }
         

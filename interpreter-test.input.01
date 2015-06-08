@@ -1,20 +1,9 @@
-(define letTest
-    (lambda (bool)
-        (let ((x 3) (y 5))
-            (let ((x y) (y x))
-                (if bool x y)))))
-
-(define letStarTest
-    (lambda (bool)
-        (let ((x 3) (y 5))
-            (let* ((x y) (y x))
-                (if bool x y)))))
-
-"Should print 5 3:"
-(letTest #t)
-(letTest #f)
-
-"Should print 5 5:"
-(letStarTest #t)
-(letStarTest #f)
-        
+(letrec (
+    (sum (lambda (x)
+        (if (= x 0)
+            0
+            (+ x (sum (- x 1))))))
+    (sumTwo (lambda (x)
+        (if (= x 0)
+            0
+            (+ x (sumTwo (- x 1))))))) (sum (sumTwo 5)))
